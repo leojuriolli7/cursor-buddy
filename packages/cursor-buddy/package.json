@@ -4,15 +4,41 @@
   "description": "AI-powered cursor companion for web apps",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/leojuriolli7/cursor-buddy#readme",
+  "bugs": {
+    "url": "https://github.com/leojuriolli7/cursor-buddy/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leojuriolli7/cursor-buddy.git",
+    "directory": "packages/cursor-buddy"
+  },
+  "keywords": [
+    "ai",
+    "assistant",
+    "cursor",
+    "react",
+    "voice",
+    "screen-capture"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepack": "pnpm build",
+    "release:check": "pnpm typecheck && npm pack --dry-run",
+    "release:publish": "pnpm release:check && npm publish",
+    "release:patch": "npm version patch",
+    "release:minor": "npm version minor",
+    "release:major": "npm version major"
   },
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.mjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -59,14 +85,19 @@
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.2.3",
     "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsdown": "^0.21.7",
     "typescript": "^5.7.3"
   },
   "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
     "react": {
+      "optional": true
+    },
+    "react-dom": {
       "optional": true
     }
   }

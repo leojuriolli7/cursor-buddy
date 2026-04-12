@@ -85,6 +85,9 @@ importers:
       react:
         specifier: ^19.0.0
         version: 19.2.5
+      react-dom:
+        specifier: ^19.0.0
+        version: 19.2.4(react@19.2.5)
       tsdown:
         specifier: ^0.21.7
         version: 0.21.7(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(typescript@5.9.3)
@@ -1690,6 +1693,11 @@ snapshots:
   react-dom@19.2.4(react@19.2.4):
     dependencies:
       react: 19.2.4
+      scheduler: 0.27.0
+
+  react-dom@19.2.4(react@19.2.5):
+    dependencies:
+      react: 19.2.5
       scheduler: 0.27.0
 
   react@19.2.4: {}

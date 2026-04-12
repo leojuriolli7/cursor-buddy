@@ -6,7 +6,12 @@
     "build": "pnpm --filter cursor-buddy build",
     "dev": "pnpm --filter cursor-buddy dev",
     "dev:demo": "pnpm --filter nextjs-demo dev",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "release:check": "pnpm --dir packages/cursor-buddy release:check",
+    "release:publish": "pnpm --dir packages/cursor-buddy release:publish",
+    "release:patch": "pnpm --dir packages/cursor-buddy release:patch",
+    "release:minor": "pnpm --dir packages/cursor-buddy release:minor",
+    "release:major": "pnpm --dir packages/cursor-buddy release:major"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
