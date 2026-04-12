@@ -3,8 +3,12 @@ export default function Home() {
     <div className="flex flex-1 items-center justify-center bg-zinc-100 dark:bg-zinc-900 p-8">
       <div className="w-full max-w-md rounded-xl bg-white dark:bg-zinc-800 shadow-lg p-8">
         <h1 className="text-2xl font-bold text-zinc-900 dark:text-white mb-4">
-          Cursor Buddy Demo
+          Cursor Buddy AI Assistant Demo
         </h1>
+
+        <p className="text-zinc-600 dark:text-zinc-300 mb-6">
+          An assistant that lives in your cursor.
+        </p>
 
         <p className="text-zinc-600 dark:text-zinc-300 mb-6">
           Hold{" "}
