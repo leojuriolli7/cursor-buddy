@@ -1,0 +1,180 @@
+/**
+ * Cursor Buddy Styles
+ *
+ * Customize by overriding CSS variables in your own stylesheet:
+ *
+ * :root {
+ *   --cursor-buddy-color-idle: #8b5cf6;
+ * }
+ */
+
+:root {
+  /* Cursor colors by state */
+  --cursor-buddy-color-idle: #3b82f6;
+  --cursor-buddy-color-listening: #ef4444;
+  --cursor-buddy-color-processing: #eab308;
+  --cursor-buddy-color-responding: #22c55e;
+  --cursor-buddy-cursor-stroke: #ffffff;
+  --cursor-buddy-cursor-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+
+  /* Speech bubble */
+  --cursor-buddy-bubble-bg: #ffffff;
+  --cursor-buddy-bubble-text: #1f2937;
+  --cursor-buddy-bubble-radius: 8px;
+  --cursor-buddy-bubble-padding: 8px 12px;
+  --cursor-buddy-bubble-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --cursor-buddy-bubble-max-width: 200px;
+  --cursor-buddy-bubble-font-size: 14px;
+
+  /* Waveform */
+  --cursor-buddy-waveform-color: #ef4444;
+  --cursor-buddy-waveform-bar-width: 4px;
+  --cursor-buddy-waveform-bar-radius: 2px;
+  --cursor-buddy-waveform-gap: 3px;
+
+  /* Overlay */
+  --cursor-buddy-z-index: 2147483647;
+
+  /* Animation durations */
+  --cursor-buddy-transition-fast: 0.1s;
+  --cursor-buddy-transition-normal: 0.2s;
+  --cursor-buddy-animation-duration: 0.3s;
+}
+
+/* Overlay container */
+.cursor-buddy-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  isolation: isolate;
+  z-index: var(--cursor-buddy-z-index);
+}
+
+/* Buddy container (cursor + accessories) */
+.cursor-buddy-container {
+  position: absolute;
+  transform: translate(-16px, -16px);
+}
+
+/* Cursor SVG */
+.cursor-buddy-cursor {
+  transition: transform var(--cursor-buddy-transition-fast) ease-out;
+  filter: drop-shadow(var(--cursor-buddy-cursor-shadow));
+}
+
+.cursor-buddy-cursor polygon {
+  stroke: var(--cursor-buddy-cursor-stroke);
+  stroke-width: 2;
+  transition: fill var(--cursor-buddy-transition-normal) ease-out;
+}
+
+.cursor-buddy-cursor--idle polygon {
+  fill: var(--cursor-buddy-color-idle);
+}
+
+.cursor-buddy-cursor--listening polygon {
+  fill: var(--cursor-buddy-color-listening);
+}
+
+.cursor-buddy-cursor--processing polygon {
+  fill: var(--cursor-buddy-color-processing);
+}
+
+.cursor-buddy-cursor--responding polygon {
+  fill: var(--cursor-buddy-color-responding);
+}
+
+/* Cursor pulse animation during listening */
+.cursor-buddy-cursor--listening {
+  animation: cursor-buddy-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes cursor-buddy-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(var(--cursor-buddy-cursor-shadow));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px var(--cursor-buddy-color-listening));
+  }
+}
+
+/* Processing spinner effect */
+.cursor-buddy-cursor--processing {
+  animation: cursor-buddy-spin-subtle 2s linear infinite;
+}
+
+@keyframes cursor-buddy-spin-subtle {
+  0% {
+    filter: drop-shadow(var(--cursor-buddy-cursor-shadow)) hue-rotate(0deg);
+  }
+  100% {
+    filter: drop-shadow(var(--cursor-buddy-cursor-shadow)) hue-rotate(360deg);
+  }
+}
+
+/* Speech bubble */
+.cursor-buddy-bubble {
+  position: absolute;
+  left: 40px;
+  top: -8px;
+  max-width: var(--cursor-buddy-bubble-max-width);
+  padding: var(--cursor-buddy-bubble-padding);
+  background-color: var(--cursor-buddy-bubble-bg);
+  color: var(--cursor-buddy-bubble-text);
+  border-radius: var(--cursor-buddy-bubble-radius);
+  box-shadow: var(--cursor-buddy-bubble-shadow);
+  font-size: var(--cursor-buddy-bubble-font-size);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  animation: cursor-buddy-fade-in var(--cursor-buddy-animation-duration)
+    ease-out;
+}
+
+@keyframes cursor-buddy-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Waveform container */
+.cursor-buddy-waveform {
+  position: absolute;
+  left: 40px;
+  top: 4px;
+  display: flex;
+  align-items: center;
+  gap: var(--cursor-buddy-waveform-gap);
+  height: 24px;
+  animation: cursor-buddy-fade-in var(--cursor-buddy-animation-duration)
+    ease-out;
+}
+
+/* Waveform bars */
+.cursor-buddy-waveform-bar {
+  width: var(--cursor-buddy-waveform-bar-width);
+  background-color: var(--cursor-buddy-waveform-color);
+  border-radius: var(--cursor-buddy-waveform-bar-radius);
+  transition: height 0.05s ease-out;
+}
+
+/* Fade out animation (applied via JS) */
+.cursor-buddy-fade-out {
+  animation: cursor-buddy-fade-out var(--cursor-buddy-animation-duration)
+    ease-out forwards;
+}
+
+@keyframes cursor-buddy-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

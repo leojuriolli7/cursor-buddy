@@ -1,0 +1,73 @@
+{
+  "name": "cursor-buddy",
+  "version": "0.0.1",
+  "description": "AI-powered cursor companion for web apps",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.mts",
+      "default": "./dist/client/index.mjs"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.mts",
+      "default": "./dist/server/index.mjs"
+    },
+    "./server/next": {
+      "types": "./dist/server/adapters/next.d.mts",
+      "default": "./dist/server/adapters/next.mjs"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "client": [
+        "./dist/client/index.d.mts"
+      ],
+      "server": [
+        "./dist/server/index.d.mts"
+      ],
+      "server/next": [
+        "./dist/server/adapters/next.d.mts"
+      ]
+    }
+  },
+  "dependencies": {
+    "@nanostores/react": "^1.1.0",
+    "@xstate/react": "^6.1.0",
+    "ai": "^6.0.158",
+    "html2canvas-pro": "^2.0.2",
+    "nanostores": "^1.2.0",
+    "xstate": "^5.19.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.0.0",
+    "tsdown": "^0.21.7",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
+  }
+}
