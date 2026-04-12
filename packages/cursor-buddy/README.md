@@ -333,7 +333,6 @@ interface WaveformRenderProps {
 
 ## TODOs
 
-- [ ] More test coverage for internal services
 - [ ] Add `muted` prop for TTS control
 - [ ] Faster transcription -> chat -> TTS flow (eg single endpoint instead of 3 calls)
 - [ ] Composition pattern for custom components
