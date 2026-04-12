@@ -29,10 +29,14 @@ export interface Point {
 export interface ScreenshotResult {
   /** Base64-encoded image data URL */
   imageData: string
-  /** Width in CSS pixels */
+  /** Screenshot image width in pixels (after any downscaling) */
   width: number
-  /** Height in CSS pixels */
+  /** Screenshot image height in pixels (after any downscaling) */
   height: number
+  /** Live browser viewport width in CSS pixels */
+  viewportWidth: number
+  /** Live browser viewport height in CSS pixels */
+  viewportHeight: number
 }
 
 /**
@@ -49,7 +53,7 @@ export interface ConversationMessage {
 export interface CursorRenderProps {
   /** Current voice state */
   state: VoiceState
-  /** Whether cursor is flying to a target */
+  /** Whether cursor is currently engaged with a pointing target */
   isPointing: boolean
   /** Rotation in radians (direction of travel during pointing) */
   rotation: number
@@ -65,6 +69,8 @@ export interface SpeechBubbleRenderProps {
   text: string
   /** Whether bubble is visible */
   isVisible: boolean
+  /** Called when the bubble should be dismissed */
+  onClick?: () => void
 }
 
 /**

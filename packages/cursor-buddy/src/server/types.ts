@@ -44,6 +44,14 @@ export interface ChatRequestBody {
   /** Base64-encoded screenshot of the viewport */
   screenshot: string
 
+  /** Metadata describing how the screenshot maps back to the live viewport */
+  capture?: {
+    /** Screenshot image width in pixels */
+    width: number
+    /** Screenshot image height in pixels */
+    height: number
+  }
+
   /** Transcribed user speech */
   transcript: string
 

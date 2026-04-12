@@ -118,6 +118,8 @@
   position: absolute;
   left: 40px;
   top: -8px;
+  pointer-events: auto;
+  cursor: pointer;
   max-width: var(--cursor-buddy-bubble-max-width);
   padding: var(--cursor-buddy-bubble-padding);
   background-color: var(--cursor-buddy-bubble-bg);
@@ -126,8 +128,10 @@
   box-shadow: var(--cursor-buddy-bubble-shadow);
   font-size: var(--cursor-buddy-bubble-font-size);
   line-height: 1.4;
-  white-space: pre-wrap;
+  width: max-content;
+  overflow-wrap: break-word;
   word-break: break-word;
+  user-select: none;
   animation: cursor-buddy-fade-in var(--cursor-buddy-animation-duration)
     ease-out;
 }

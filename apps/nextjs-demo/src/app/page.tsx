@@ -7,8 +7,11 @@ export default function Home() {
         </h1>
 
         <p className="text-zinc-600 dark:text-zinc-300 mb-6">
-          Hold <kbd className="px-2 py-1 bg-zinc-100 dark:bg-zinc-700 rounded text-sm font-mono">Ctrl+Alt</kbd> to
-          speak. Try asking:
+          Hold{" "}
+          <kbd className="px-2 py-1 bg-zinc-100 dark:bg-zinc-700 rounded text-sm font-mono">
+            Ctrl+Alt
+          </kbd>{" "}
+          to speak. Try asking:
         </p>
 
         <ul className="text-zinc-600 dark:text-zinc-300 mb-6 space-y-2 text-sm">

@@ -299,13 +299,12 @@ interface WaveformRenderProps {
 3. User releases hotkey
 4. Screenshot of viewport is captured
 5. Audio is transcribed via AI SDK
-6. Screenshot + transcript sent to AI model
-7. AI responds with text, optionally including `[POINT:x,y:label]` tag
+6. Screenshot + capture metadata sent to AI model
+7. AI responds with text, optionally including `[POINT:x,y:label]` tag in screenshot-image coordinates
 8. Response is spoken via TTS
-9. If pointing tag present, cursor animates to target location
+9. If pointing tag present, coordinates are mapped back to the live viewport and the cursor animates to the target location
 
 ## TODOS
-- [ ] AI pointing at the wrong coordinates on the screen
 - [ ] Faster transcription -> chat -> TTS flow (eg single endpoint instead of 3 calls)
 - [ ] Composition pattern for custom components
 - [ ] Better hotkey management

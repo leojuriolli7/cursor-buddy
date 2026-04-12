@@ -1,5 +1,5 @@
 import { createContext } from "react"
-import type { VoiceState, PointingTarget } from "../core/types"
+import type { VoiceState } from "../core/types"
 
 export interface CursorBuddyContextValue {
   /** Current voice state */
@@ -14,7 +14,7 @@ export interface CursorBuddyContextValue {
   isEnabled: boolean
   /** Whether TTS is currently playing */
   isSpeaking: boolean
-  /** Whether currently pointing at a target */
+  /** Whether currently engaged with a pointing target */
   isPointing: boolean
   /** Current error (null if none) */
   error: Error | null
@@ -29,6 +29,8 @@ export interface CursorBuddyContextValue {
   speak: (text: string) => Promise<void>
   /** Manually point at coordinates */
   pointAt: (x: number, y: number, label: string) => void
+  /** Dismiss the current pointing target and return to follow mode */
+  dismissPointing: () => void
   /** Reset to idle state */
   reset: () => void
 }

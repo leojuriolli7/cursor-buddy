@@ -3,6 +3,13 @@ import type { ScreenshotResult } from "../../core/types";
 
 const MAX_WIDTH = 1280;
 
+function getCaptureMetrics() {
+  return {
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  };
+}
+
 /**
  * Resize canvas to max width while maintaining aspect ratio
  */
@@ -57,6 +64,7 @@ function createFallbackCanvas(): HTMLCanvasElement {
  * Falls back to a placeholder if capture fails (e.g., due to unsupported CSS).
  */
 export async function captureViewport(): Promise<ScreenshotResult> {
+  const captureMetrics = getCaptureMetrics();
   let canvas: HTMLCanvasElement;
 
   try {
@@ -64,8 +72,8 @@ export async function captureViewport(): Promise<ScreenshotResult> {
       scale: 1,
       useCORS: true,
       logging: false,
-      width: window.innerWidth,
-      height: window.innerHeight,
+      width: captureMetrics.viewportWidth,
+      height: captureMetrics.viewportHeight,
       x: window.scrollX,
       y: window.scrollY,
     });
@@ -79,5 +87,7 @@ export async function captureViewport(): Promise<ScreenshotResult> {
     imageData: resized.toDataURL("image/jpeg", 0.8),
     width: resized.width,
     height: resized.height,
+    viewportWidth: captureMetrics.viewportWidth,
+    viewportHeight: captureMetrics.viewportHeight,
   };
 }

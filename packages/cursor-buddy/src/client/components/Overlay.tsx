@@ -43,7 +43,7 @@ export function Overlay({
   const [isMounted, setIsMounted] = useState(false)
   useEffect(() => setIsMounted(true), [])
 
-  const { state, isPointing, isEnabled } = useCursorBuddy()
+  const { state, isPointing, isEnabled, dismissPointing } = useCursorBuddy()
 
   const buddyPosition = useStore($buddyPosition)
   const buddyRotation = useStore($buddyRotation)
@@ -64,6 +64,7 @@ export function Overlay({
   const speechBubbleProps: SpeechBubbleRenderProps = {
     text: pointingTarget?.label ?? "",
     isVisible: isPointing && !!pointingTarget,
+    onClick: dismissPointing,
   }
 
   const waveformProps: WaveformRenderProps = {

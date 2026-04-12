@@ -22,7 +22,16 @@ import { useVoiceCapture } from "./hooks/useVoiceCapture";
 import { useScreenCapture } from "./hooks/useScreenCapture";
 import { useCursorPosition } from "./hooks/useCursorPosition";
 import { injectStyles } from "./utils/inject-styles";
-import type { VoiceState, ConversationMessage } from "../core/types";
+import type {
+  VoiceState,
+  ConversationMessage,
+  PointingTarget,
+  ScreenshotResult,
+} from "../core/types";
+
+const POINTING_LOCK_TIMEOUT_MS = 10_000;
+
+type PointerMode = "follow" | "flying" | "anchored";
 
 export interface CursorBuddyProviderProps {
   /** API endpoint for cursor buddy server */
@@ -41,6 +50,36 @@ export interface CursorBuddyProviderProps {
   onError?: (error: Error) => void;
   /** Children */
   children: React.ReactNode;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+function mapPointToViewport(
+  target: PointingTarget,
+  screenshot: ScreenshotResult,
+): PointingTarget {
+  if (screenshot.width <= 0 || screenshot.height <= 0) {
+    return target;
+  }
+
+  const scaleX = screenshot.viewportWidth / screenshot.width;
+  const scaleY = screenshot.viewportHeight / screenshot.height;
+
+  return {
+    ...target,
+    x: clamp(
+      Math.round(target.x * scaleX),
+      0,
+      Math.max(screenshot.viewportWidth - 1, 0),
+    ),
+    y: clamp(
+      Math.round(target.y * scaleY),
+      0,
+      Math.max(screenshot.viewportHeight - 1, 0),
+    ),
+  };
 }
 
 export function CursorBuddyProvider({
@@ -73,9 +112,10 @@ export function CursorBuddyProvider({
   const cursorPosition = useStore($cursorPosition);
 
   // Local state
-  const [isPointing, setIsPointing] = useState(false);
+  const [pointerMode, setPointerMode] = useState<PointerMode>("follow");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cancelPointingRef = useRef<(() => void) | null>(null);
+  const dismissPointingTimeoutRef = useRef<number | null>(null);
   // Track recording state via ref to avoid stale closure issues in callbacks
   const isRecordingRef = useRef(false);
 
@@ -84,6 +124,7 @@ export function CursorBuddyProvider({
   const transcript = snapshot.context.transcript;
   const response = snapshot.context.response;
   const error = snapshot.context.error;
+  const isPointing = pointerMode !== "follow";
 
   // Notify on state changes
   useEffect(() => {
@@ -97,19 +138,89 @@ export function CursorBuddyProvider({
     }
   }, [error, onError]);
 
-  // Update buddy position to follow cursor when idle
+  const clearPointingTimeout = useCallback(() => {
+    if (dismissPointingTimeoutRef.current !== null) {
+      window.clearTimeout(dismissPointingTimeoutRef.current);
+      dismissPointingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const cancelPointingAnimation = useCallback(() => {
+    if (cancelPointingRef.current) {
+      cancelPointingRef.current();
+      cancelPointingRef.current = null;
+    }
+  }, []);
+
+  const releasePointingLock = useCallback(() => {
+    clearPointingTimeout();
+    cancelPointingAnimation();
+    setPointerMode("follow");
+    $pointingTarget.set(null);
+    $buddyPosition.set($cursorPosition.get());
+    $buddyRotation.set(0);
+    $buddyScale.set(1);
+  }, [cancelPointingAnimation, clearPointingTimeout]);
+
+  const schedulePointingRelease = useCallback(() => {
+    clearPointingTimeout();
+    dismissPointingTimeoutRef.current = window.setTimeout(() => {
+      dismissPointingTimeoutRef.current = null;
+      releasePointingLock();
+    }, POINTING_LOCK_TIMEOUT_MS);
+  }, [clearPointingTimeout, releasePointingLock]);
+
+  // Update buddy position to follow cursor whenever it is not locked to a point
   useEffect(() => {
-    if (state === "idle" && !isPointing) {
+    if (pointerMode === "follow") {
       $buddyPosition.set(cursorPosition);
       $buddyRotation.set(0);
       $buddyScale.set(1);
     }
-  }, [state, isPointing, cursorPosition]);
+  }, [pointerMode, cursorPosition]);
+
+  useEffect(() => {
+    return () => {
+      clearPointingTimeout();
+      cancelPointingAnimation();
+    };
+  }, [cancelPointingAnimation, clearPointingTimeout]);
+
+  const handlePointing = useCallback(
+    (target: { x: number; y: number; label: string }) => {
+      clearPointingTimeout();
+      cancelPointingAnimation();
+      $pointingTarget.set(target);
+      setPointerMode("flying");
+      schedulePointingRelease();
+
+      const startPos = $buddyPosition.get();
+      const endPos = { x: target.x, y: target.y };
+
+      cancelPointingRef.current = animateBezierFlight(startPos, endPos, 800, {
+        onFrame: (position, rotation, scale) => {
+          $buddyPosition.set(position);
+          $buddyRotation.set(rotation);
+          $buddyScale.set(scale);
+        },
+        onComplete: () => {
+          cancelPointingRef.current = null;
+          setPointerMode("anchored");
+          $buddyPosition.set(endPos);
+          $buddyRotation.set(0);
+          $buddyScale.set(1);
+          send({ type: "POINTING_COMPLETE" });
+        },
+      });
+    },
+    [cancelPointingAnimation, clearPointingTimeout, schedulePointingRelease, send],
+  );
 
   const startListening = useCallback(async () => {
     if (!isEnabled || isRecordingRef.current) return;
 
     try {
+      releasePointingLock();
       isRecordingRef.current = true;
       send({ type: "HOTKEY_PRESSED" });
       await voiceCapture.start();
@@ -119,7 +230,7 @@ export function CursorBuddyProvider({
         err instanceof Error ? err : new Error("Failed to start recording");
       send({ type: "ERROR", error: captureError });
     }
-  }, [isEnabled, send, voiceCapture]);
+  }, [isEnabled, releasePointingLock, send, voiceCapture]);
 
   const stopListening = useCallback(async () => {
     // Use ref instead of state to avoid stale closure issues
@@ -163,6 +274,10 @@ export function CursorBuddyProvider({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           screenshot: screenshot.imageData,
+          capture: {
+            width: screenshot.width,
+            height: screenshot.height,
+          },
           transcript: transcriptText,
           history,
         }),
@@ -189,7 +304,10 @@ export function CursorBuddyProvider({
       }
 
       // Parse pointing tag and strip from response
-      const pointTarget = parsePointingTag(fullResponse);
+      const rawPointTarget = parsePointingTag(fullResponse);
+      const pointTarget = rawPointTarget
+        ? mapPointToViewport(rawPointTarget, screenshot)
+        : null;
       const cleanResponse = stripPointingTag(fullResponse);
 
       send({ type: "AI_RESPONSE_COMPLETE", response: cleanResponse });
@@ -205,7 +323,6 @@ export function CursorBuddyProvider({
 
       // Handle pointing if present
       if (pointTarget) {
-        $pointingTarget.set(pointTarget);
         onPoint?.(pointTarget);
         handlePointing(pointTarget);
       }
@@ -230,31 +347,8 @@ export function CursorBuddyProvider({
     onTranscript,
     onResponse,
     onPoint,
+    handlePointing,
   ]);
-
-  const handlePointing = useCallback(
-    (target: { x: number; y: number; label: string }) => {
-      setIsPointing(true);
-
-      const startPos = $buddyPosition.get();
-      const endPos = { x: target.x, y: target.y };
-
-      cancelPointingRef.current = animateBezierFlight(startPos, endPos, 800, {
-        onFrame: (position, rotation, scale) => {
-          $buddyPosition.set(position);
-          $buddyRotation.set(rotation);
-          $buddyScale.set(scale);
-        },
-        onComplete: () => {
-          setIsPointing(false);
-          $buddyRotation.set(0);
-          $buddyScale.set(1);
-          send({ type: "POINTING_COMPLETE" });
-        },
-      });
-    },
-    [send],
-  );
 
   const playTTS = useCallback(
     async (text: string) => {
@@ -306,24 +400,20 @@ export function CursorBuddyProvider({
 
   const pointAt = useCallback(
     (x: number, y: number, label: string) => {
-      const target = { x, y, label };
-      $pointingTarget.set(target);
-      handlePointing(target);
+      handlePointing({ x, y, label });
     },
     [handlePointing],
   );
+
+  const dismissPointing = useCallback(() => {
+    releasePointingLock();
+  }, [releasePointingLock]);
 
   const setEnabled = useCallback((enabled: boolean) => {
     $isEnabled.set(enabled);
   }, []);
 
   const reset = useCallback(() => {
-    // Cancel any ongoing pointing animation
-    if (cancelPointingRef.current) {
-      cancelPointingRef.current();
-      cancelPointingRef.current = null;
-    }
-
     // Stop any playing audio
     if (audioRef.current) {
       audioRef.current.pause();
@@ -335,12 +425,11 @@ export function CursorBuddyProvider({
 
     // Reset atoms
     $isSpeaking.set(false);
-    $pointingTarget.set(null);
-    setIsPointing(false);
+    releasePointingLock();
 
     // Send cancel to machine
     send({ type: "CANCEL" });
-  }, [send]);
+  }, [releasePointingLock, send]);
 
   const contextValue: CursorBuddyContextValue = useMemo(
     () => ({
@@ -357,6 +446,7 @@ export function CursorBuddyProvider({
       setEnabled,
       speak,
       pointAt,
+      dismissPointing,
       reset,
     }),
     [
@@ -373,6 +463,7 @@ export function CursorBuddyProvider({
       setEnabled,
       speak,
       pointAt,
+      dismissPointing,
       reset,
     ],
   );
