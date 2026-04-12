@@ -25,6 +25,8 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "prepack": "pnpm build",
     "release:check": "pnpm typecheck && npm pack --dry-run",
@@ -47,9 +49,9 @@
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
     },
-    "./client": {
-      "types": "./dist/client/index.d.mts",
-      "default": "./dist/client/index.mjs"
+    "./react": {
+      "types": "./dist/react/index.d.mts",
+      "default": "./dist/react/index.mjs"
     },
     "./server": {
       "types": "./dist/server/index.d.mts",
@@ -62,8 +64,8 @@
   },
   "typesVersions": {
     "*": {
-      "client": [
-        "./dist/client/index.d.mts"
+      "react": [
+        "./dist/react/index.d.mts"
       ],
       "server": [
         "./dist/server/index.d.mts"
@@ -75,11 +77,9 @@
   },
   "dependencies": {
     "@nanostores/react": "^1.1.0",
-    "@xstate/react": "^6.1.0",
     "ai": "^6.0.158",
     "html2canvas-pro": "^2.0.2",
-    "nanostores": "^1.2.0",
-    "xstate": "^5.19.2"
+    "nanostores": "^1.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.8",
@@ -87,7 +87,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tsdown": "^0.21.7",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

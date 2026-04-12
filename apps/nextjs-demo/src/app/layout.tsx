@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { CursorBuddy } from "cursor-buddy/client";
+import { CursorBuddy } from "cursor-buddy/react";
 import "./globals.css";
 
 const geistSans = Geist({

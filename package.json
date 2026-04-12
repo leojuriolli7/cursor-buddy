@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter cursor-buddy build",
+    "test": "pnpm --filter cursor-buddy test",
     "dev": "pnpm --filter cursor-buddy dev",
     "dev:demo": "pnpm --filter nextjs-demo dev",
     "typecheck": "pnpm -r typecheck",

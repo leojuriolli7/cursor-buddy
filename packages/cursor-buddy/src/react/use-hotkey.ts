@@ -1,17 +1,19 @@
-import { useEffect, useRef } from "react";
+"use client"
+
+import { useEffect, useRef } from "react"
 
 interface HotkeyModifiers {
-  ctrl: boolean;
-  alt: boolean;
-  shift: boolean;
-  meta: boolean;
+  ctrl: boolean
+  alt: boolean
+  shift: boolean
+  meta: boolean
 }
 
 /**
  * Parse a hotkey string like "ctrl+alt" into modifier flags
  */
 function parseHotkey(hotkey: string): HotkeyModifiers {
-  const parts = hotkey.toLowerCase().split("+");
+  const parts = hotkey.toLowerCase().split("+")
   return {
     ctrl: parts.includes("ctrl") || parts.includes("control"),
     alt: parts.includes("alt") || parts.includes("option"),
@@ -20,7 +22,7 @@ function parseHotkey(hotkey: string): HotkeyModifiers {
       parts.includes("meta") ||
       parts.includes("cmd") ||
       parts.includes("command"),
-  };
+  }
 }
 
 /**
@@ -28,14 +30,14 @@ function parseHotkey(hotkey: string): HotkeyModifiers {
  */
 function matchesHotkey(
   event: KeyboardEvent,
-  modifiers: HotkeyModifiers,
+  modifiers: HotkeyModifiers
 ): boolean {
   return (
     event.ctrlKey === modifiers.ctrl &&
     event.altKey === modifiers.alt &&
     event.shiftKey === modifiers.shift &&
     event.metaKey === modifiers.meta
-  );
+  )
 }
 
 /**
@@ -50,64 +52,64 @@ export function useHotkey(
   hotkey: string,
   onPress: () => void,
   onRelease: () => void,
-  enabled: boolean = true,
+  enabled: boolean = true
 ): void {
-  const isPressedRef = useRef(false);
-  const modifiersRef = useRef<HotkeyModifiers>(parseHotkey(hotkey));
+  const isPressedRef = useRef(false)
+  const modifiersRef = useRef<HotkeyModifiers>(parseHotkey(hotkey))
 
   // Use refs for callbacks to avoid stale closures in event handlers
-  const onPressRef = useRef(onPress);
-  const onReleaseRef = useRef(onRelease);
-  onPressRef.current = onPress;
-  onReleaseRef.current = onRelease;
+  const onPressRef = useRef(onPress)
+  const onReleaseRef = useRef(onRelease)
+  onPressRef.current = onPress
+  onReleaseRef.current = onRelease
 
   // Update modifiers when hotkey changes
   useEffect(() => {
-    modifiersRef.current = parseHotkey(hotkey);
-  }, [hotkey]);
+    modifiersRef.current = parseHotkey(hotkey)
+  }, [hotkey])
 
   useEffect(() => {
     if (!enabled) {
       // If disabled while pressed, trigger release
       if (isPressedRef.current) {
-        isPressedRef.current = false;
-        onReleaseRef.current();
+        isPressedRef.current = false
+        onReleaseRef.current()
       }
-      return;
+      return
     }
 
     function handleKeyDown(event: KeyboardEvent) {
       if (matchesHotkey(event, modifiersRef.current) && !isPressedRef.current) {
-        isPressedRef.current = true;
-        event.preventDefault();
-        onPressRef.current();
+        isPressedRef.current = true
+        event.preventDefault()
+        onPressRef.current()
       }
     }
 
     function handleKeyUp(event: KeyboardEvent) {
       // Release when any required modifier is released
       if (isPressedRef.current && !matchesHotkey(event, modifiersRef.current)) {
-        isPressedRef.current = false;
-        onReleaseRef.current();
+        isPressedRef.current = false
+        onReleaseRef.current()
       }
     }
 
     function handleBlur() {
       // Release if window loses focus while hotkey is pressed
       if (isPressedRef.current) {
-        isPressedRef.current = false;
-        onReleaseRef.current();
+        isPressedRef.current = false
+        onReleaseRef.current()
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleBlur);
+    window.addEventListener("keydown", handleKeyDown)
+    window.addEventListener("keyup", handleKeyUp)
+    window.addEventListener("blur", handleBlur)
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleBlur);
-    };
-  }, [enabled]);
+      window.removeEventListener("keydown", handleKeyDown)
+      window.removeEventListener("keyup", handleKeyUp)
+      window.removeEventListener("blur", handleBlur)
+    }
+  }, [enabled])
 }

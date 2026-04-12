@@ -8,7 +8,8 @@ AI-powered cursor companion for web apps. Push-to-talk voice assistant that can 
 - **Screenshot context** — AI sees your current viewport
 - **Voice responses** — Text-to-speech playback
 - **Cursor pointing** — AI can point at UI elements it references
-- **Framework agnostic** — Adapter-based server, works with Next.js, Express, Hono
+- **Voice interruption** — Start talking again to cut off current response
+- **Framework agnostic** — Core client works without React, adapter-based architecture
 - **Customizable** — CSS variables, custom components, headless mode
 
 ## Installation
@@ -53,7 +54,7 @@ Add the `<CursorBuddy />` component to your app.
 
 ```tsx
 // app/layout.tsx
-import { CursorBuddy } from "cursor-buddy/client"
+import { CursorBuddy } from "cursor-buddy/react"
 
 export default function RootLayout({ children }) {
   return (
@@ -112,7 +113,6 @@ createCursorBuddyHandler({
 
   // Optional
   hotkey="ctrl+alt"              // Push-to-talk hotkey (default: "ctrl+alt")
-  muted={false}                  // Disable TTS playback
   container={element}            // Portal container (default: document.body)
 
   // Custom components
@@ -159,7 +159,7 @@ Cursor buddy styles are customizable via CSS variables. Override them in your st
 Replace default components with your own:
 
 ```tsx
-import { CursorBuddy, type CursorRenderProps } from "cursor-buddy/client"
+import { CursorBuddy, type CursorRenderProps } from "cursor-buddy/react"
 
 function MyCursor({ state, rotation, scale }: CursorRenderProps) {
   return (
@@ -183,7 +183,7 @@ For full control, use the provider and hook directly:
 import {
   CursorBuddyProvider,
   useCursorBuddy
-} from "cursor-buddy/client"
+} from "cursor-buddy/react"
 
 function App() {
   return (
@@ -200,7 +200,6 @@ function MyCustomUI() {
     response,        // Latest AI response
     audioLevel,      // 0-1, for waveform visualization
     isEnabled,
-    isSpeaking,
     isPointing,
     error,
 
@@ -208,8 +207,8 @@ function MyCustomUI() {
     startListening,
     stopListening,
     setEnabled,
-    speak,           // Manually trigger TTS
     pointAt,         // Manually point at coordinates
+    dismissPointing,
     reset,
   } = useCursorBuddy()
 
@@ -225,6 +224,32 @@ function MyCustomUI() {
     </div>
   )
 }
+```
+
+## Framework-Agnostic Usage
+
+For non-React environments, use the core client directly:
+
+```ts
+import { CursorBuddyClient } from "cursor-buddy"
+
+const client = new CursorBuddyClient("/api/cursor-buddy", {
+  onStateChange: (state) => console.log("State:", state),
+  onTranscript: (text) => console.log("Transcript:", text),
+  onResponse: (text) => console.log("Response:", text),
+  onError: (err) => console.error("Error:", err),
+})
+
+// Subscribe to state changes
+client.subscribe(() => {
+  const snapshot = client.getSnapshot()
+  console.log(snapshot)
+})
+
+// Trigger voice interaction
+client.startListening()
+// ... user speaks ...
+client.stopListening()
 ```
 
 ## Render Props Types
@@ -250,6 +275,15 @@ interface WaveformRenderProps {
 
 ## API Reference
 
+### Core Exports (`cursor-buddy`)
+
+| Export | Description |
+|--------|-------------|
+| `CursorBuddyClient` | Framework-agnostic client class |
+| `VoiceState` | Type: `"idle" \| "listening" \| "processing" \| "responding"` |
+| `PointingTarget` | Type: `{ x: number, y: number, label: string }` |
+| `Point` | Type: `{ x: number, y: number }` |
+
 ### Server Exports (`cursor-buddy/server`)
 
 | Export | Description |
@@ -265,7 +299,7 @@ interface WaveformRenderProps {
 |--------|-------------|
 | `toNextJsHandler` | Convert handler to Next.js App Router format |
 
-### Client Exports (`cursor-buddy/client`)
+### React Exports (`cursor-buddy/react`)
 
 | Export | Description |
 |--------|-------------|
@@ -273,24 +307,16 @@ interface WaveformRenderProps {
 | `CursorBuddyProvider` | Headless provider for custom UI |
 | `useCursorBuddy` | Hook to access state and actions |
 
-### Types (`cursor-buddy/client`)
+### Types (`cursor-buddy/react`)
 
 | Export | Description |
 |--------|-------------|
 | `CursorBuddyProps` | Props for `<CursorBuddy />` |
 | `CursorBuddyProviderProps` | Props for `<CursorBuddyProvider />` |
-| `CursorBuddyContextValue` | Return type of `useCursorBuddy()` |
+| `UseCursorBuddyReturn` | Return type of `useCursorBuddy()` |
 | `CursorRenderProps` | Props passed to custom cursor |
 | `SpeechBubbleRenderProps` | Props passed to custom speech bubble |
 | `WaveformRenderProps` | Props passed to custom waveform |
-
-### Core Types (`cursor-buddy`)
-
-| Export | Description |
-|--------|-------------|
-| `VoiceState` | `"idle" \| "listening" \| "processing" \| "responding"` |
-| `PointingTarget` | `{ x: number, y: number, label: string }` |
-| `Point` | `{ x: number, y: number }` |
 
 ## How It Works
 
@@ -303,11 +329,15 @@ interface WaveformRenderProps {
 7. AI responds with text, optionally including `[POINT:x,y:label]` tag in screenshot-image coordinates
 8. Response is spoken via TTS
 9. If pointing tag present, coordinates are mapped back to the live viewport and the cursor animates to the target location
+10. **If user presses hotkey again at any point, current response is interrupted**
 
-## TODOS
+## TODOs
+
+- [ ] More test coverage for internal services
+- [ ] Add `muted` prop for TTS control
 - [ ] Faster transcription -> chat -> TTS flow (eg single endpoint instead of 3 calls)
 - [ ] Composition pattern for custom components
-- [ ] Better hotkey management
+- [ ] Better hotkey registering code
 
 ## License
 

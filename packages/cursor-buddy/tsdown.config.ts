@@ -38,14 +38,14 @@ const cssInlinePlugin: Plugin = {
 }
 
 /**
- * Plugin to add "use client" directive to client bundle.
+ * Plugin to add "use client" directive to React bundle.
  */
 const useClientPlugin: Plugin = {
   name: "use-client",
 
   renderChunk(code, chunk) {
-    // Add "use client" to client entry chunks
-    if (chunk.fileName.includes("client/index")) {
+    // Add "use client" to React entry chunks
+    if (chunk.fileName.includes("react/index")) {
       return {
         code: `"use client";\n${code}`,
         map: null,
@@ -57,7 +57,7 @@ const useClientPlugin: Plugin = {
 export default defineConfig({
   entry: [
     "src/index.ts",
-    "src/client/index.ts",
+    "src/react/index.ts",
     "src/server/index.ts",
     "src/server/adapters/next.ts",
   ],

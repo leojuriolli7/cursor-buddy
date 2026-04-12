@@ -1,14 +1,13 @@
 "use client"
 
-import { useEffect } from "react"
 import {
   CursorBuddyProvider,
   type CursorBuddyProviderProps,
-} from "./CursorBuddyProvider"
-import { Overlay, type OverlayProps } from "./components/Overlay"
-import { useHotkey } from "./hooks/useHotkey"
-import { useCursorBuddy } from "./hooks/useCursorBuddy"
-import type { PointingTarget, VoiceState } from "../core/types"
+} from "../provider"
+import { Overlay, type OverlayProps } from "./Overlay"
+import { useHotkey } from "../use-hotkey"
+import { useCursorBuddy } from "../hooks"
+import type { PointingTarget, VoiceState } from "../../core/types"
 
 export interface CursorBuddyProps
   extends Pick<OverlayProps, "cursor" | "speechBubble" | "waveform"> {
@@ -16,8 +15,6 @@ export interface CursorBuddyProps
   endpoint: string
   /** Hotkey for push-to-talk (default: "ctrl+alt") */
   hotkey?: string
-  /** Whether TTS is muted */
-  muted?: boolean
   /** Container element for portal (defaults to document.body) */
   container?: HTMLElement | null
   /** Callback when transcript is ready */
@@ -70,7 +67,7 @@ function CursorBuddyInner({
  *
  * @example
  * ```tsx
- * import { CursorBuddy } from "cursor-buddy/client"
+ * import { CursorBuddy } from "cursor-buddy/react"
  *
  * function App() {
  *   return (
@@ -85,7 +82,6 @@ function CursorBuddyInner({
 export function CursorBuddy({
   endpoint,
   hotkey,
-  muted,
   container,
   cursor,
   speechBubble,
@@ -99,7 +95,6 @@ export function CursorBuddy({
   return (
     <CursorBuddyProvider
       endpoint={endpoint}
-      muted={muted}
       onTranscript={onTranscript}
       onResponse={onResponse}
       onPoint={onPoint}

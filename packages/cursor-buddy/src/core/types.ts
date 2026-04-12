@@ -4,6 +4,17 @@
 export type VoiceState = "idle" | "listening" | "processing" | "responding"
 
 /**
+ * Events for the voice state machine
+ */
+export type VoiceEvent =
+  | { type: "HOTKEY_PRESSED" }
+  | { type: "HOTKEY_RELEASED" }
+  | { type: "TRANSCRIPTION_COMPLETE"; transcript: string }
+  | { type: "AI_RESPONSE_COMPLETE"; response: string }
+  | { type: "TTS_COMPLETE" }
+  | { type: "ERROR"; error: Error }
+
+/**
  * Point coordinates parsed from AI response [POINT:x,y:label]
  */
 export interface PointingTarget {
@@ -84,25 +95,35 @@ export interface WaveformRenderProps {
 }
 
 /**
- * Events for the voice state machine
+ * Configuration options for CursorBuddyClient
  */
-export type VoiceMachineEvent =
-  | { type: "HOTKEY_PRESSED" }
-  | { type: "HOTKEY_RELEASED" }
-  | { type: "TRANSCRIPTION_COMPLETE"; transcript: string }
-  | { type: "AI_RESPONSE_START" }
-  | { type: "AI_RESPONSE_CHUNK"; text: string }
-  | { type: "AI_RESPONSE_COMPLETE"; response: string }
-  | { type: "TTS_COMPLETE" }
-  | { type: "POINTING_COMPLETE" }
-  | { type: "ERROR"; error: Error }
-  | { type: "CANCEL" }
+export interface CursorBuddyClientOptions {
+  /** Callback when transcript is ready */
+  onTranscript?: (text: string) => void
+  /** Callback when AI responds */
+  onResponse?: (text: string) => void
+  /** Callback when pointing at element */
+  onPoint?: (target: PointingTarget) => void
+  /** Callback when state changes */
+  onStateChange?: (state: VoiceState) => void
+  /** Callback when error occurs */
+  onError?: (error: Error) => void
+}
 
 /**
- * Context for the voice state machine
+ * Client snapshot for React's useSyncExternalStore
  */
-export interface VoiceMachineContext {
+export interface CursorBuddySnapshot {
+  /** Current voice state */
+  state: VoiceState
+  /** Latest transcribed user speech */
   transcript: string
+  /** Latest AI response (stripped of POINT tags) */
   response: string
+  /** Current error (null if none) */
   error: Error | null
+  /** Whether currently engaged with a pointing target */
+  isPointing: boolean
+  /** Whether the buddy is enabled */
+  isEnabled: boolean
 }

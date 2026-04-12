@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { createPortal } from "react-dom"
 import { useStore } from "@nanostores/react"
@@ -8,7 +10,7 @@ import {
   $audioLevel,
   $pointingTarget,
 } from "../../core/atoms"
-import { useCursorBuddy } from "../hooks/useCursorBuddy"
+import { useCursorBuddy } from "../hooks"
 import { DefaultCursor } from "./Cursor"
 import { DefaultSpeechBubble } from "./SpeechBubble"
 import { DefaultWaveform } from "./Waveform"

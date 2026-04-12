@@ -1,4 +1,12 @@
-// Main entry point - re-exports core types only
-// Use cursor-buddy/client or cursor-buddy/server for implementation
+// Core client for headless/non-React usage
+export { CursorBuddyClient } from "./core/client"
 
-export type { VoiceState, PointingTarget, Point } from "./core"
+// Core types
+export type {
+  VoiceState,
+  VoiceEvent,
+  PointingTarget,
+  Point,
+  CursorBuddyClientOptions,
+  CursorBuddySnapshot,
+} from "./core/types"
