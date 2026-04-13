@@ -1,28 +1,28 @@
-import { Toaster } from "sonner";
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { CursorBuddyWrapper } from "./cursor-buddy";
+import type { Metadata } from "next"
+import { Geist, Geist_Mono } from "next/font/google"
+import { Toaster } from "sonner"
+import "./globals.css"
+import { CursorBuddyWrapper } from "./cursor-buddy"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
-});
+})
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
-});
+})
 
 export const metadata: Metadata = {
   title: "Cursor Buddy Demo",
   description: "AI-powered cursor companion demo",
-};
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
     <html
@@ -37,5 +37,5 @@ export default function RootLayout({
         <Toaster richColors position="top-right" />
       </body>
     </html>
-  );
+  )
 }

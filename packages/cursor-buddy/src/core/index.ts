@@ -1,18 +1,19 @@
 // Core client
-export { CursorBuddyClient } from "./client"
+
 export type { CursorBuddyServices } from "./client"
+export { CursorBuddyClient } from "./client"
 
 // Types
 export type {
-  VoiceState,
-  VoiceEvent,
-  PointingTarget,
-  Point,
-  ScreenshotResult,
   ConversationMessage,
-  CursorRenderProps,
-  SpeechBubbleRenderProps,
-  WaveformRenderProps,
   CursorBuddyClientOptions,
   CursorBuddySnapshot,
+  CursorRenderProps,
+  Point,
+  PointingTarget,
+  ScreenshotResult,
+  SpeechBubbleRenderProps,
+  VoiceEvent,
+  VoiceState,
+  WaveformRenderProps,
 } from "./types"

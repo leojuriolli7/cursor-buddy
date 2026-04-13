@@ -6,7 +6,7 @@ import type { CursorBuddyHandlerConfig, TTSRequestBody } from "../types"
  */
 export async function handleTTS(
   request: Request,
-  config: CursorBuddyHandlerConfig
+  config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
   const body = (await request.json()) as TTSRequestBody
   const { text } = body

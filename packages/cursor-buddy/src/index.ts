@@ -3,10 +3,10 @@ export { CursorBuddyClient } from "./core/client"
 
 // Core types
 export type {
-  VoiceState,
-  VoiceEvent,
-  PointingTarget,
-  Point,
   CursorBuddyClientOptions,
   CursorBuddySnapshot,
+  Point,
+  PointingTarget,
+  VoiceEvent,
+  VoiceState,
 } from "./core/types"

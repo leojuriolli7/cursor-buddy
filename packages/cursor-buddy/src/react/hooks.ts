@@ -1,10 +1,10 @@
 "use client"
 
-import { useSyncExternalStore, useCallback } from "react"
 import { useStore } from "@nanostores/react"
+import { useCallback, useSyncExternalStore } from "react"
 import { $audioLevel } from "../core/atoms"
-import { useClient } from "./provider"
 import type { VoiceState } from "../core/types"
+import { useClient } from "./provider"
 
 export interface UseCursorBuddyReturn {
   /** Current voice state */
@@ -44,7 +44,7 @@ export function useCursorBuddy(): UseCursorBuddyReturn {
 
   const subscribe = useCallback(
     (listener: () => void) => client.subscribe(listener),
-    [client]
+    [client],
   )
   const getSnapshot = useCallback(() => client.getSnapshot(), [client])
 
@@ -59,11 +59,11 @@ export function useCursorBuddy(): UseCursorBuddyReturn {
     stopListening: useCallback(() => client.stopListening(), [client]),
     setEnabled: useCallback(
       (enabled: boolean) => client.setEnabled(enabled),
-      [client]
+      [client],
     ),
     pointAt: useCallback(
       (x: number, y: number, label: string) => client.pointAt(x, y, label),
-      [client]
+      [client],
     ),
     dismissPointing: useCallback(() => client.dismissPointing(), [client]),
     reset: useCallback(() => client.reset(), [client]),

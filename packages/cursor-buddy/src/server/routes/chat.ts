@@ -1,13 +1,13 @@
 import { streamText } from "ai"
-import type { CursorBuddyHandlerConfig, ChatRequestBody } from "../types"
 import { DEFAULT_SYSTEM_PROMPT } from "../system-prompt"
+import type { ChatRequestBody, CursorBuddyHandlerConfig } from "../types"
 
 /**
  * Handle chat requests: screenshot + transcript → AI SSE stream
  */
 export async function handleChat(
   request: Request,
-  config: CursorBuddyHandlerConfig
+  config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
   const body = (await request.json()) as ChatRequestBody
   const { screenshot, transcript, history, capture } = body
@@ -16,7 +16,7 @@ export async function handleChat(
   const systemPrompt =
     typeof config.system === "function"
       ? config.system({ defaultPrompt: DEFAULT_SYSTEM_PROMPT })
-      : config.system ?? DEFAULT_SYSTEM_PROMPT
+      : (config.system ?? DEFAULT_SYSTEM_PROMPT)
 
   // Trim history to maxHistory (default 10 exchanges = 20 messages)
   const maxMessages = (config.maxHistory ?? 10) * 2

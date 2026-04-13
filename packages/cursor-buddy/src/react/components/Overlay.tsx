@@ -1,24 +1,24 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { createPortal } from "react-dom"
 import { useStore } from "@nanostores/react"
+import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import {
+  $audioLevel,
   $buddyPosition,
   $buddyRotation,
   $buddyScale,
-  $audioLevel,
   $pointingTarget,
 } from "../../core/atoms"
-import { useCursorBuddy } from "../hooks"
-import { DefaultCursor } from "./Cursor"
-import { DefaultSpeechBubble } from "./SpeechBubble"
-import { DefaultWaveform } from "./Waveform"
 import type {
   CursorRenderProps,
   SpeechBubbleRenderProps,
   WaveformRenderProps,
 } from "../../core/types"
+import { useCursorBuddy } from "../hooks"
+import { DefaultCursor } from "./Cursor"
+import { DefaultSpeechBubble } from "./SpeechBubble"
+import { DefaultWaveform } from "./Waveform"
 
 export interface OverlayProps {
   /** Custom cursor renderer */

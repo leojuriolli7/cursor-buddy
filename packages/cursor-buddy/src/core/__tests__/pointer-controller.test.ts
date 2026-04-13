@@ -1,5 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { PointerController } from "../services/pointer-controller"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   $buddyPosition,
   $buddyRotation,
@@ -7,6 +6,7 @@ import {
   $cursorPosition,
   $pointingTarget,
 } from "../atoms"
+import { PointerController } from "../services/pointer-controller"
 
 // Mock animateBezierFlight
 vi.mock("../bezier", () => ({

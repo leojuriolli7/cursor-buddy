@@ -1,7 +1,7 @@
-import { defineConfig } from "tsdown"
-import type { Plugin } from "rolldown"
 import fs from "node:fs"
 import path from "node:path"
+import type { Plugin } from "rolldown"
+import { defineConfig } from "tsdown"
 
 /**
  * Rolldown plugin to handle CSS ?inline imports.
@@ -15,7 +15,7 @@ const cssInlinePlugin: Plugin = {
       const importerDir = path.dirname(importer)
       const cssPath = id.replace("?inline", "")
       const absolutePath = path.resolve(importerDir, cssPath)
-      return absolutePath + "?inline"
+      return `${absolutePath}?inline`
     }
   },
 

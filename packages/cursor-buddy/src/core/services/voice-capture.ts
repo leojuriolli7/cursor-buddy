@@ -1,5 +1,5 @@
+import { encodeWAV, mergeAudioChunks } from "../utils/audio"
 import { createWorkletBlobURL } from "../utils/audio-worklet"
-import { mergeAudioChunks, encodeWAV } from "../utils/audio"
 
 const SAMPLE_RATE = 16000
 const AUDIO_LEVEL_BOOST = 10.2
@@ -49,7 +49,7 @@ export class VoiceCaptureService {
     const source = audioContext.createMediaStreamSource(stream)
     const workletNode = new AudioWorkletNode(
       audioContext,
-      "audio-capture-processor"
+      "audio-capture-processor",
     )
     this.workletNode = workletNode
 

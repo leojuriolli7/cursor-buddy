@@ -25,11 +25,15 @@ export function mergeAudioChunks(chunks: Float32Array[]): Float32Array {
 function floatTo16BitPCM(
   output: DataView,
   offset: number,
-  input: Float32Array
+  input: Float32Array,
 ): void {
   for (let i = 0; i < input.length; i++, offset += 2) {
     const sample = Math.max(-1, Math.min(1, input[i]))
-    output.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+    output.setInt16(
+      offset,
+      sample < 0 ? sample * 0x8000 : sample * 0x7fff,
+      true,
+    )
   }
 }
 

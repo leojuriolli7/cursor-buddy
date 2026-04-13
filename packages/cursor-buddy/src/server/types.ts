@@ -1,4 +1,4 @@
-import type { LanguageModel, SpeechModel, TranscriptionModel, Tool } from "ai"
+import type { LanguageModel, SpeechModel, Tool, TranscriptionModel } from "ai"
 
 /**
  * Configuration for createCursorBuddyHandler

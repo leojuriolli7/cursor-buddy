@@ -1,10 +1,13 @@
-import type { VoiceState, VoiceEvent } from "./types"
+import type { VoiceEvent, VoiceState } from "./types"
 
 /**
  * State transition table for the voice interaction flow.
  * Maps current state + event type to next state.
  */
-const transitions: Record<VoiceState, Partial<Record<VoiceEvent["type"], VoiceState>>> = {
+const transitions: Record<
+  VoiceState,
+  Partial<Record<VoiceEvent["type"], VoiceState>>
+> = {
   idle: {
     HOTKEY_PRESSED: "listening",
   },

@@ -1,11 +1,14 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { animateBezierFlight } from "../bezier"
 
 describe("animateBezierFlight", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      return setTimeout(() => callback(performance.now()), 16) as unknown as number
+      return setTimeout(
+        () => callback(performance.now()),
+        16,
+      ) as unknown as number
     })
     vi.stubGlobal("cancelAnimationFrame", (frameId: number) => {
       clearTimeout(frameId as unknown as ReturnType<typeof setTimeout>)
@@ -79,7 +82,7 @@ describe("animateBezierFlight", () => {
 
     // Find the call with highest scale
     const scales = onFrame.mock.calls.map(
-      (call: [unknown, unknown, number]) => call[2]
+      (call: [unknown, unknown, number]) => call[2],
     )
     const maxScale = Math.max(...scales)
 
@@ -105,10 +108,15 @@ describe("animateBezierFlight", () => {
     const onFrame = vi.fn()
     const onComplete = vi.fn()
 
-    const cancel = animateBezierFlight({ x: 0, y: 0 }, { x: 100, y: 100 }, 1000, {
-      onFrame,
-      onComplete,
-    })
+    const cancel = animateBezierFlight(
+      { x: 0, y: 0 },
+      { x: 100, y: 100 },
+      1000,
+      {
+        onFrame,
+        onComplete,
+      },
+    )
 
     vi.advanceTimersByTime(100)
     const callCountBeforeCancel = onFrame.mock.calls.length
@@ -119,7 +127,9 @@ describe("animateBezierFlight", () => {
 
     // Should not have received many more calls after cancel
     // (may get one more from pending frame)
-    expect(onFrame.mock.calls.length).toBeLessThanOrEqual(callCountBeforeCancel + 1)
+    expect(onFrame.mock.calls.length).toBeLessThanOrEqual(
+      callCountBeforeCancel + 1,
+    )
     expect(onComplete).not.toHaveBeenCalled()
   })
 

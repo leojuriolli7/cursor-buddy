@@ -15,7 +15,7 @@ function getCaptureMetrics() {
  */
 function resizeCanvas(
   canvas: HTMLCanvasElement,
-  maxWidth: number
+  maxWidth: number,
 ): HTMLCanvasElement {
   if (canvas.width <= maxWidth) {
     return canvas
@@ -42,7 +42,7 @@ function createFallbackCanvas(): HTMLCanvasElement {
   const canvas = document.createElement("canvas")
   canvas.width = Math.min(window.innerWidth, MAX_WIDTH)
   canvas.height = Math.round(
-    (window.innerHeight / window.innerWidth) * canvas.width
+    (window.innerHeight / window.innerWidth) * canvas.width,
   )
 
   const ctx = canvas.getContext("2d")

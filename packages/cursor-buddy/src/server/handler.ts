@@ -1,7 +1,7 @@
-import type { CursorBuddyHandlerConfig, CursorBuddyHandler } from "./types"
 import { handleChat } from "./routes/chat"
 import { handleTranscribe } from "./routes/transcribe"
 import { handleTTS } from "./routes/tts"
+import type { CursorBuddyHandler, CursorBuddyHandlerConfig } from "./types"
 
 /**
  * Create a cursor buddy request handler.
@@ -24,7 +24,7 @@ import { handleTTS } from "./routes/tts"
  * ```
  */
 export function createCursorBuddyHandler(
-  config: CursorBuddyHandlerConfig
+  config: CursorBuddyHandlerConfig,
 ): CursorBuddyHandler {
   const handler = async (request: Request): Promise<Response> => {
     const url = new URL(request.url)
@@ -50,7 +50,7 @@ export function createCursorBuddyHandler(
           {
             status: 404,
             headers: { "Content-Type": "application/json" },
-          }
+          },
         )
     }
   }

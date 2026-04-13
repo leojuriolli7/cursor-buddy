@@ -1,14 +1,14 @@
-import type { CursorRenderProps } from "../../core/types";
+import type { CursorRenderProps } from "../../core/types"
 
 // -30 degrees ≈ -0.52 radians (standard cursor tilt)
-const BASE_ROTATION = -Math.PI / 6;
+const BASE_ROTATION = -Math.PI / 6
 
 /**
  * Default cursor component - a colored triangle pointer.
  * Color and animations change based on voice state via CSS classes.
  */
 export function DefaultCursor({ state, rotation, scale }: CursorRenderProps) {
-  const stateClass = `cursor-buddy-cursor--${state}`;
+  const stateClass = `cursor-buddy-cursor--${state}`
 
   return (
     <svg
@@ -22,5 +22,5 @@ export function DefaultCursor({ state, rotation, scale }: CursorRenderProps) {
     >
       <polygon points="16,4 28,28 16,22 4,28" />
     </svg>
-  );
+  )
 }

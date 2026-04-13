@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { VoiceCaptureService } from "../services/voice-capture"
 
 // Mock AudioContext and related APIs
@@ -71,7 +71,9 @@ describe("VoiceCaptureService", () => {
     })
 
     // Mock AudioContext
-    globalThis.AudioContext = vi.fn().mockImplementation(() => mockAudioContext) as any
+    globalThis.AudioContext = vi
+      .fn()
+      .mockImplementation(() => mockAudioContext) as any
 
     // Mock AudioWorkletNode
     globalThis.AudioWorkletNode = MockAudioWorkletNode as any

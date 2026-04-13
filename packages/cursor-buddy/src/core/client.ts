@@ -20,7 +20,7 @@ function clamp(value: number, min: number, max: number): number {
 
 function mapPointToViewport(
   target: PointingTarget,
-  screenshot: ScreenshotResult
+  screenshot: ScreenshotResult,
 ): PointingTarget {
   if (screenshot.width <= 0 || screenshot.height <= 0) {
     return target
@@ -34,12 +34,12 @@ function mapPointToViewport(
     x: clamp(
       Math.round(target.x * scaleX),
       0,
-      Math.max(screenshot.viewportWidth - 1, 0)
+      Math.max(screenshot.viewportWidth - 1, 0),
     ),
     y: clamp(
       Math.round(target.y * scaleY),
       0,
-      Math.max(screenshot.viewportHeight - 1, 0)
+      Math.max(screenshot.viewportHeight - 1, 0),
     ),
   }
 }
@@ -89,7 +89,7 @@ export class CursorBuddyClient {
   constructor(
     endpoint: string,
     options: CursorBuddyClientOptions = {},
-    services: CursorBuddyServices = {}
+    services: CursorBuddyServices = {},
   ) {
     this.endpoint = endpoint
     this.options = options
@@ -98,7 +98,8 @@ export class CursorBuddyClient {
     this.voiceCapture = services.voiceCapture ?? new VoiceCaptureService()
     this.audioPlayback = services.audioPlayback ?? new AudioPlaybackService()
     this.screenCapture = services.screenCapture ?? new ScreenCaptureService()
-    this.pointerController = services.pointerController ?? new PointerController()
+    this.pointerController =
+      services.pointerController ?? new PointerController()
     this.stateMachine = createStateMachine()
 
     // Initialize cached snapshot
@@ -317,7 +318,7 @@ export class CursorBuddyClient {
   private async chat(
     transcript: string,
     screenshot: ScreenshotResult,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Promise<string> {
     const history = $conversationHistory.get()
 

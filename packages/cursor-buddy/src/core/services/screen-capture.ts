@@ -1,5 +1,5 @@
-import { captureViewport } from "../utils/screenshot"
 import type { ScreenshotResult } from "../types"
+import { captureViewport } from "../utils/screenshot"
 
 /**
  * Framework-agnostic service for capturing viewport screenshots.

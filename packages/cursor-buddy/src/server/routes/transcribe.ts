@@ -6,7 +6,7 @@ import type { CursorBuddyHandlerConfig, TranscribeResponse } from "../types"
  */
 export async function handleTranscribe(
   request: Request,
-  config: CursorBuddyHandlerConfig
+  config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
   const formData = await request.formData()
   const audioFile = formData.get("audio")

@@ -333,10 +333,10 @@ interface WaveformRenderProps {
 
 ## TODOs
 
-- [ ] Add `muted` prop for TTS control
-- [ ] Faster transcription -> chat -> TTS flow (eg single endpoint instead of 3 calls)
-- [ ] Composition pattern for custom components
-- [ ] Better hotkey registering code
+- [ ] High: Proper test structure without relying on `as any`
+- [ ] High: Faster transcription -> chat -> TTS flow (eg single endpoint instead of 3 calls)
+- [ ] Medium: Better hotkey registering code
+- [ ] Low: Add `muted` prop for TTS control
 
 ## License
 

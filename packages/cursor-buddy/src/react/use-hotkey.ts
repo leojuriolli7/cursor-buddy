@@ -30,7 +30,7 @@ function parseHotkey(hotkey: string): HotkeyModifiers {
  */
 function matchesHotkey(
   event: KeyboardEvent,
-  modifiers: HotkeyModifiers
+  modifiers: HotkeyModifiers,
 ): boolean {
   return (
     event.ctrlKey === modifiers.ctrl &&
@@ -52,7 +52,7 @@ export function useHotkey(
   hotkey: string,
   onPress: () => void,
   onRelease: () => void,
-  enabled: boolean = true
+  enabled: boolean = true,
 ): void {
   const isPressedRef = useRef(false)
   const modifiersRef = useRef<HotkeyModifiers>(parseHotkey(hotkey))

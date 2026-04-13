@@ -1,13 +1,10 @@
 "use client"
 
-import {
-  CursorBuddyProvider,
-  type CursorBuddyProviderProps,
-} from "../provider"
-import { Overlay, type OverlayProps } from "./Overlay"
-import { useHotkey } from "../use-hotkey"
-import { useCursorBuddy } from "../hooks"
 import type { PointingTarget, VoiceState } from "../../core/types"
+import { useCursorBuddy } from "../hooks"
+import { CursorBuddyProvider } from "../provider"
+import { useHotkey } from "../use-hotkey"
+import { Overlay, type OverlayProps } from "./Overlay"
 
 export interface CursorBuddyProps
   extends Pick<OverlayProps, "cursor" | "speechBubble" | "waveform"> {

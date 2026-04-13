@@ -1,10 +1,10 @@
 "use client"
 
-import { createContext, useContext, useState, useEffect } from "react"
-import { CursorBuddyClient } from "../core/client"
+import { createContext, useContext, useEffect, useState } from "react"
 import { $cursorPosition } from "../core/atoms"
-import { injectStyles } from "./utils/inject-styles"
+import { CursorBuddyClient } from "../core/client"
 import type { CursorBuddyClientOptions } from "../core/types"
+import { injectStyles } from "./utils/inject-styles"
 
 const CursorBuddyContext = createContext<CursorBuddyClient | null>(null)
 
@@ -35,7 +35,7 @@ export function CursorBuddyProvider({
         onPoint,
         onStateChange,
         onError,
-      })
+      }),
   )
 
   // Inject styles on mount

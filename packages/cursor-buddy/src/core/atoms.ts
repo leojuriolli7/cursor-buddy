@@ -1,5 +1,5 @@
 import { atom } from "nanostores"
-import type { Point, PointingTarget, ConversationMessage } from "./types"
+import type { ConversationMessage, Point, PointingTarget } from "./types"
 
 /**
  * Nanostores atoms for reactive values that don't need state machine semantics.
