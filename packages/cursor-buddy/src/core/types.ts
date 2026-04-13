@@ -15,7 +15,10 @@ export type VoiceEvent =
   | { type: "ERROR"; error: Error }
 
 /**
- * Point coordinates parsed from AI response [POINT:x,y:label]
+ * Point coordinates parsed from AI response.
+ * Supports two formats:
+ * - Marker-based: [POINT:5:label] - references a numbered marker
+ * - Coordinate-based: [POINT:640,360:label] - raw pixel coordinates
  */
 export interface PointingTarget {
   /** X coordinate in viewport pixels (top-left origin) */
@@ -25,6 +28,13 @@ export interface PointingTarget {
   /** Label to display in speech bubble */
   label: string
 }
+
+/**
+ * Parsed pointing tag result - either marker ID or coordinates.
+ */
+export type ParsedPointingTag =
+  | { type: "marker"; markerId: number; label: string }
+  | { type: "coordinates"; x: number; y: number; label: string }
 
 /**
  * 2D point
@@ -48,6 +58,19 @@ export interface ScreenshotResult {
   viewportWidth: number
   /** Live browser viewport height in CSS pixels */
   viewportHeight: number
+}
+
+// Re-export MarkerMap type from elements module
+export type { MarkerMap, ElementMarker } from "./utils/elements"
+
+/**
+ * Annotated screenshot result with marker map.
+ */
+export interface AnnotatedScreenshotResult extends ScreenshotResult {
+  /** Map of marker ID to element reference */
+  markerMap: import("./utils/elements").MarkerMap
+  /** Text description of markers for AI context */
+  markerContext: string
 }
 
 /**

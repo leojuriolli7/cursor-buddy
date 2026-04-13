@@ -18,6 +18,7 @@ export function DefaultCursor({ state, rotation, scale }: CursorRenderProps) {
       className={`cursor-buddy-cursor ${stateClass}`}
       style={{
         transform: `rotate(${BASE_ROTATION + rotation}rad) scale(${scale})`,
+        transformOrigin: "16px 4px",
       }}
     >
       <polygon points="16,4 28,28 16,22 4,28" />

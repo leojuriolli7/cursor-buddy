@@ -8,6 +8,8 @@ const defaultScreenshot = {
   height: 720,
   viewportWidth: 1920,
   viewportHeight: 1080,
+  markerMap: new Map(),
+  markerContext: "No interactive elements detected.",
 }
 
 function createJsonResponse(body: unknown, ok = true) {
@@ -84,6 +86,7 @@ function createMockServices(
       } as any,
       screenCapture: {
         capture: vi.fn().mockResolvedValue(defaultScreenshot),
+        captureAnnotated: vi.fn().mockResolvedValue(defaultScreenshot),
       } as any,
       pointerController: {
         pointAt: vi.fn(() => {
@@ -263,6 +266,7 @@ describe("CursorBuddyClient", () => {
         },
         transcript: "Open the save menu",
         history: [],
+        markerContext: defaultScreenshot.markerContext,
       })
 
       const ttsPayload = JSON.parse(fetchMock.mock.calls[2]?.[1].body as string)

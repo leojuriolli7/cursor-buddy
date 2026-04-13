@@ -10,7 +10,7 @@ export async function handleChat(
   config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
   const body = (await request.json()) as ChatRequestBody
-  const { screenshot, transcript, history, capture } = body
+  const { screenshot, transcript, history, capture, markerContext } = body
 
   // Resolve system prompt (string or function)
   const systemPrompt =
@@ -22,10 +22,21 @@ export async function handleChat(
   const maxMessages = (config.maxHistory ?? 10) * 2
   const trimmedHistory = history.slice(-maxMessages)
 
-  const captureContext = capture
-    ? `The screenshot image size is ${capture.width}x${capture.height} pixels.
-If you include a [POINT:x,y:label] tag, x and y MUST use that screenshot image pixel space.`
-    : null
+  // Build capture context with marker information
+  const captureContextParts: string[] = []
+
+  if (capture) {
+    captureContextParts.push(
+      `Screenshot size: ${capture.width}x${capture.height} pixels.`,
+    )
+  }
+
+  if (markerContext) {
+    captureContextParts.push("", markerContext)
+  }
+
+  const captureContext =
+    captureContextParts.length > 0 ? captureContextParts.join("\n") : null
 
   // Build messages array with vision content
   const messages = [

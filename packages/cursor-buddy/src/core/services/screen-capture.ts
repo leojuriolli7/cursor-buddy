@@ -1,5 +1,5 @@
-import type { ScreenshotResult } from "../types"
-import { captureViewport } from "../utils/screenshot"
+import type { ScreenshotResult, AnnotatedScreenshotResult } from "../types"
+import { captureViewport, captureAnnotatedViewport } from "../utils/screenshot"
 
 /**
  * Framework-agnostic service for capturing viewport screenshots.
@@ -11,5 +11,14 @@ export class ScreenCaptureService {
    */
   async capture(): Promise<ScreenshotResult> {
     return captureViewport()
+  }
+
+  /**
+   * Capture an annotated screenshot with marker overlays.
+   * Interactive elements are marked with numbered labels.
+   * @returns Annotated screenshot result with marker map
+   */
+  async captureAnnotated(): Promise<AnnotatedScreenshotResult> {
+    return captureAnnotatedViewport()
   }
 }

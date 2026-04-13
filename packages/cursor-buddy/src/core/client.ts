@@ -4,13 +4,14 @@ import { AudioPlaybackService } from "./services/audio-playback"
 import { ScreenCaptureService } from "./services/screen-capture"
 import { PointerController } from "./services/pointer-controller"
 import { $audioLevel, $conversationHistory, $isEnabled } from "./atoms"
-import { parsePointingTag, stripPointingTag } from "./pointing"
+import { parsePointingTagRaw, stripPointingTag } from "./pointing"
+import { resolveMarkerToCoordinates } from "./utils/elements"
 import type {
   VoiceState,
   CursorBuddyClientOptions,
   CursorBuddySnapshot,
   PointingTarget,
-  ScreenshotResult,
+  AnnotatedScreenshotResult,
   ConversationMessage,
 } from "./types"
 
@@ -18,26 +19,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
 
-function mapPointToViewport(
-  target: PointingTarget,
-  screenshot: ScreenshotResult,
-): PointingTarget {
+/**
+ * Map coordinate-based pointing from screenshot space to viewport space.
+ */
+function mapCoordinatesToViewport(
+  x: number,
+  y: number,
+  screenshot: AnnotatedScreenshotResult,
+): { x: number; y: number } {
   if (screenshot.width <= 0 || screenshot.height <= 0) {
-    return target
+    return { x, y }
   }
 
   const scaleX = screenshot.viewportWidth / screenshot.width
   const scaleY = screenshot.viewportHeight / screenshot.height
 
   return {
-    ...target,
     x: clamp(
-      Math.round(target.x * scaleX),
+      Math.round(x * scaleX),
       0,
       Math.max(screenshot.viewportWidth - 1, 0),
     ),
     y: clamp(
-      Math.round(target.y * scaleY),
+      Math.round(y * scaleY),
       0,
       Math.max(screenshot.viewportHeight - 1, 0),
     ),
@@ -153,10 +157,10 @@ export class CursorBuddyClient {
     const signal = this.abortController?.signal
 
     try {
-      // Stop mic, capture screenshot in parallel
+      // Stop mic, capture annotated screenshot in parallel
       const [audioBlob, screenshot] = await Promise.all([
         this.voiceCapture.stop(),
-        this.screenCapture.capture(),
+        this.screenCapture.captureAnnotated(),
       ])
 
       if (signal?.aborted) return
@@ -169,12 +173,12 @@ export class CursorBuddyClient {
       this.options.onTranscript?.(transcript)
       this.notify()
 
-      // Chat
+      // Chat (with marker context)
       const response = await this.chat(transcript, screenshot, signal)
       if (signal?.aborted) return
 
       // Parse pointing tag and strip from response
-      const pointTarget = parsePointingTag(response)
+      const parsed = parsePointingTagRaw(response)
       const cleanResponse = stripPointingTag(response)
 
       this.response = cleanResponse
@@ -193,11 +197,34 @@ export class CursorBuddyClient {
       ]
       $conversationHistory.set(newHistory)
 
-      // Point if needed
+      // Resolve pointing target (marker-based or coordinate-based)
+      let pointTarget: PointingTarget | null = null
+
+      if (parsed) {
+        if (parsed.type === "marker") {
+          // Resolve marker ID to element coordinates
+          const coords = resolveMarkerToCoordinates(
+            screenshot.markerMap,
+            parsed.markerId,
+          )
+          if (coords) {
+            pointTarget = { ...coords, label: parsed.label }
+          }
+        } else {
+          // Map coordinates from screenshot space to viewport space
+          const coords = mapCoordinatesToViewport(
+            parsed.x,
+            parsed.y,
+            screenshot,
+          )
+          pointTarget = { ...coords, label: parsed.label }
+        }
+      }
+
+      // Point if we have a valid target
       if (pointTarget) {
-        const mappedTarget = mapPointToViewport(pointTarget, screenshot)
-        this.options.onPoint?.(mappedTarget)
-        this.pointerController.pointAt(mappedTarget)
+        this.options.onPoint?.(pointTarget)
+        this.pointerController.pointAt(pointTarget)
       }
 
       // TTS
@@ -317,7 +344,7 @@ export class CursorBuddyClient {
 
   private async chat(
     transcript: string,
-    screenshot: ScreenshotResult,
+    screenshot: AnnotatedScreenshotResult,
     signal?: AbortSignal,
   ): Promise<string> {
     const history = $conversationHistory.get()
@@ -333,6 +360,7 @@ export class CursorBuddyClient {
         },
         transcript,
         history,
+        markerContext: screenshot.markerContext,
       }),
       signal,
     })

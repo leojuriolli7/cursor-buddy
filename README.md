@@ -5,7 +5,7 @@ AI-powered cursor companion for web apps. Push-to-talk voice assistant that can 
 ## Features
 
 - **Push-to-talk voice input** — Hold a hotkey to speak, release to send
-- **Screenshot context** — AI sees your current viewport
+- **Annotated screenshot context** — AI sees your current viewport with numbered interactive elements
 - **Voice responses** — Text-to-speech playback
 - **Cursor pointing** — AI can point at UI elements it references
 - **Voice interruption** — Start talking again to cut off current response
@@ -323,17 +323,18 @@ interface WaveformRenderProps {
 1. User holds the hotkey (Ctrl+Alt)
 2. Microphone captures audio, waveform shows audio level
 3. User releases hotkey
-4. Screenshot of viewport is captured
+4. An annotated screenshot of the viewport is captured, with numbered markers on visible interactive elements
 5. Audio is transcribed via AI SDK
-6. Screenshot + capture metadata sent to AI model
-7. AI responds with text, optionally including `[POINT:x,y:label]` tag in screenshot-image coordinates
+6. Screenshot + marker context are sent to the AI model
+7. AI responds with text, optionally including a pointing tag:
+   - Preferred: `[POINT:5:Submit]` for numbered interactive elements
+   - Fallback: `[POINT:640,360:Error text]` for arbitrary screen coordinates
 8. Response is spoken via TTS
-9. If pointing tag present, coordinates are mapped back to the live viewport and the cursor animates to the target location
+9. If a marker tag is present, it is resolved back to the live DOM element; if a coordinate tag is present, it is mapped back to the live viewport; then the cursor animates to the target location
 10. **If user presses hotkey again at any point, current response is interrupted**
 
 ## TODOs
 
-- [ ] Highest: Coordinate system not perfect yet: Still might point to wrong coordinates, might need to do DOM snapshot. Percentages don't work either.
 - [ ] Highest: Faster transcription -> chat -> TTS flow (starting with single server endpoint instead of 3 separate client calls + faster models), could also use realtime voice models or try cutting one of the 3 steps.
 - [ ] High: Make tool calls first class: Pointing becomes tool call (once per turn) + re-use pointing bubble UI for tool calls
 - [ ] High: Proper test structure without relying on `as any`

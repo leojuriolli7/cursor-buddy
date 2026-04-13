@@ -1,7 +1,7 @@
 import html2canvas from "html2canvas-pro"
-import type { ScreenshotResult } from "../types"
-
-const MAX_WIDTH = 1280
+import type { ScreenshotResult, AnnotatedScreenshotResult } from "../types"
+import { createMarkerMap } from "./elements"
+import { createAnnotatedCanvas, generateMarkerContext } from "./annotations"
 
 function getCaptureMetrics() {
   return {
@@ -11,39 +11,13 @@ function getCaptureMetrics() {
 }
 
 /**
- * Resize canvas to max width while maintaining aspect ratio
- */
-function resizeCanvas(
-  canvas: HTMLCanvasElement,
-  maxWidth: number,
-): HTMLCanvasElement {
-  if (canvas.width <= maxWidth) {
-    return canvas
-  }
-
-  const scale = maxWidth / canvas.width
-  const resized = document.createElement("canvas")
-  resized.width = maxWidth
-  resized.height = Math.round(canvas.height * scale)
-
-  const ctx = resized.getContext("2d")
-  if (ctx) {
-    ctx.drawImage(canvas, 0, 0, resized.width, resized.height)
-  }
-
-  return resized
-}
-
-/**
  * Create a fallback canvas when screenshot capture fails.
  * Returns a simple gray canvas with an error message.
  */
 function createFallbackCanvas(): HTMLCanvasElement {
   const canvas = document.createElement("canvas")
-  canvas.width = Math.min(window.innerWidth, MAX_WIDTH)
-  canvas.height = Math.round(
-    (window.innerHeight / window.innerWidth) * canvas.width,
-  )
+  canvas.width = window.innerWidth
+  canvas.height = window.innerHeight
 
   const ctx = canvas.getContext("2d")
   if (ctx) {
@@ -81,13 +55,60 @@ export async function captureViewport(): Promise<ScreenshotResult> {
     canvas = createFallbackCanvas()
   }
 
-  const resized = resizeCanvas(canvas, MAX_WIDTH)
-
   return {
-    imageData: resized.toDataURL("image/jpeg", 0.8),
-    width: resized.width,
-    height: resized.height,
+    imageData: canvas.toDataURL("image/png"),
+    width: canvas.width,
+    height: canvas.height,
     viewportWidth: captureMetrics.viewportWidth,
     viewportHeight: captureMetrics.viewportHeight,
+  }
+}
+
+/**
+ * Capture an annotated screenshot of the current viewport.
+ * Interactive elements are marked with numbered labels.
+ * Returns both the annotated image and a marker map for resolving IDs.
+ */
+export async function captureAnnotatedViewport(): Promise<AnnotatedScreenshotResult> {
+  const captureMetrics = getCaptureMetrics()
+
+  // 1. Discover interactive elements BEFORE capturing screenshot
+  //    (so rects are accurate to what's visible)
+  const markerMap = createMarkerMap()
+
+  // 2. Capture screenshot
+  let sourceCanvas: HTMLCanvasElement
+  try {
+    sourceCanvas = await html2canvas(document.body, {
+      scale: 1,
+      useCORS: true,
+      logging: false,
+      width: captureMetrics.viewportWidth,
+      height: captureMetrics.viewportHeight,
+      x: window.scrollX,
+      y: window.scrollY,
+    })
+  } catch {
+    sourceCanvas = createFallbackCanvas()
+  }
+
+  // 3. Create a fresh canvas and draw annotations on it
+  //    (html2canvas leaves dirty context state - transforms, clipping, etc.)
+  const canvas =
+    markerMap.size > 0
+      ? createAnnotatedCanvas(sourceCanvas, markerMap)
+      : sourceCanvas
+
+  // 4. Generate marker context for AI
+  const markerContext = generateMarkerContext(markerMap)
+
+  return {
+    imageData: canvas.toDataURL("image/png"),
+    width: canvas.width,
+    height: canvas.height,
+    viewportWidth: captureMetrics.viewportWidth,
+    viewportHeight: captureMetrics.viewportHeight,
+    markerMap,
+    markerContext,
   }
 }

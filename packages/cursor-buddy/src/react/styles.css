@@ -53,7 +53,7 @@
 /* Buddy container (cursor + accessories) */
 .cursor-buddy-container {
   position: absolute;
-  transform: translate(-16px, -16px);
+  transform: translate(-16px, -4px);
 }
 
 /* Cursor SVG */
