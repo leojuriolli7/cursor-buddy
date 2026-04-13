@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "pnpm --filter cursor-buddy build",
     "dev": "next dev",
+    "prebuild": "pnpm --filter cursor-buddy build",
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
