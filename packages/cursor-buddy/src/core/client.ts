@@ -79,6 +79,7 @@ export class CursorBuddyClient {
   private response = ""
   private error: Error | null = null
   private abortController: AbortController | null = null
+  private historyCommittedForTurn = false
 
   // Cached snapshot for useSyncExternalStore (must be referentially stable)
   private cachedSnapshot: CursorBuddySnapshot
@@ -132,6 +133,7 @@ export class CursorBuddyClient {
     this.transcript = ""
     this.response = ""
     this.error = null
+    this.historyCommittedForTurn = false
     this.pointerController.release()
 
     // 3. Transition state
@@ -184,7 +186,7 @@ export class CursorBuddyClient {
       })
       this.options.onResponse?.(cleanResponse)
 
-      // Update history (only on success, never partial)
+      // Update history on successful completion
       const history = $conversationHistory.get()
       const newHistory: ConversationMessage[] = [
         ...history,
@@ -192,6 +194,7 @@ export class CursorBuddyClient {
         { role: "assistant", content: cleanResponse },
       ]
       $conversationHistory.set(newHistory)
+      this.historyCommittedForTurn = true
 
       // Resolve pointing target (marker-based or coordinate-based)
       let pointTarget: PointingTarget | null = null
@@ -267,6 +270,7 @@ export class CursorBuddyClient {
     this.transcript = ""
     this.response = ""
     this.error = null
+    this.historyCommittedForTurn = false
     this.pointerController.release()
     this.stateMachine.reset()
     this.notify()
@@ -313,11 +317,33 @@ export class CursorBuddyClient {
   // === Private Methods ===
 
   private abort(): void {
+    // Commit partial turn to history if interrupted mid-turn
+    this.commitPartialHistory()
+
     this.abortController?.abort()
     this.abortController = null
     this.audioPlayback.stop()
     // Reset audio level on abort
     $audioLevel.set(0)
+  }
+
+  /**
+   * Commit partial turn to history when interrupted.
+   * Only commits if we have both transcript and response,
+   * and haven't already committed for this turn.
+   */
+  private commitPartialHistory(): void {
+    if (this.historyCommittedForTurn) return
+    if (!this.transcript || !this.response) return
+
+    const history = $conversationHistory.get()
+    const newHistory: ConversationMessage[] = [
+      ...history,
+      { role: "user", content: this.transcript },
+      { role: "assistant", content: this.response }, // already stripped of POINT tags
+    ]
+    $conversationHistory.set(newHistory)
+    this.historyCommittedForTurn = true
   }
 
   private async transcribe(blob: Blob, signal?: AbortSignal): Promise<string> {

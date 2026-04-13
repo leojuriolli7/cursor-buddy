@@ -247,7 +247,7 @@ describe("CursorBuddyClient", () => {
       expect(ttsPayload).toEqual({ text: "Click Save" })
     })
 
-    it("does not append history for an interrupted in-flight turn", async () => {
+    it("does not append history when interrupted before response starts", async () => {
       const onTranscript = vi.fn()
       const { services } = createMockServices()
       const client = new CursorBuddyClient("/api", { onTranscript }, services)
@@ -355,6 +355,79 @@ describe("CursorBuddyClient", () => {
       expect(firstSignal.aborted).toBe(true)
       expect(audioPlayback.stop).toHaveBeenCalled()
       expect($audioLevel.get()).toBe(0)
+    })
+
+    it("commits partial history when interrupted mid-response", async () => {
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+      const ttsDeferred = createDeferred<Blob>()
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      // Transcription completes
+      fetchMock.mockResolvedValueOnce(
+        createJsonResponse({ text: "What is this button?" }),
+      )
+      // Chat streams partial response with pointing tag
+      fetchMock.mockResolvedValueOnce(
+        createStreamResponse(["This is the submit button [POINT:5:Submit]"]),
+      )
+      // TTS hangs
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        blob: vi.fn().mockReturnValue(ttsDeferred.promise),
+      })
+
+      client.startListening()
+      const stopPromise = client.stopListening()
+
+      // Wait for TTS to be called (chat completed)
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(3)
+      })
+
+      // Interrupt before TTS completes
+      client.startListening()
+      ttsDeferred.resolve(new Blob(["audio"], { type: "audio/mpeg" }))
+      await stopPromise
+
+      // History should contain the partial turn (response stripped of POINT tag)
+      expect($conversationHistory.get()).toEqual([
+        { role: "user", content: "What is this button?" },
+        { role: "assistant", content: "This is the submit button" },
+      ])
+    })
+
+    it("does not double-commit history when interrupted after completion", async () => {
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      // Complete turn
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ text: "First question" }))
+        .mockResolvedValueOnce(createStreamResponse(["First answer"]))
+        .mockResolvedValueOnce(
+          createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
+        )
+
+      client.startListening()
+      await client.stopListening()
+
+      expect($conversationHistory.get()).toEqual([
+        { role: "user", content: "First question" },
+        { role: "assistant", content: "First answer" },
+      ])
+
+      // Start a new turn (this calls abort() internally)
+      client.startListening()
+
+      // History should still have exactly one exchange, not duplicated
+      expect($conversationHistory.get()).toEqual([
+        { role: "user", content: "First question" },
+        { role: "assistant", content: "First answer" },
+      ])
     })
   })
 
