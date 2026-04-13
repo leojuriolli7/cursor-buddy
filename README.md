@@ -333,8 +333,9 @@ interface WaveformRenderProps {
 
 ## TODOs
 
-- [ ] Highest: Coordinate system not perfect yet: Still might point to wrong coordinates, might need to do DOM snapshot.
-- [ ] High: Faster transcription -> chat -> TTS flow (starting with single server endpoint instead of 3 separate client calls + faster models)
+- [ ] Highest: Coordinate system not perfect yet: Still might point to wrong coordinates, might need to do DOM snapshot. Percentages don't work either.
+- [ ] Highest: Faster transcription -> chat -> TTS flow (starting with single server endpoint instead of 3 separate client calls + faster models), could also use realtime voice models or try cutting one of the 3 steps.
+- [ ] High: Make tool calls first class: Pointing becomes tool call (once per turn) + re-use pointing bubble UI for tool calls
 - [ ] High: Proper test structure without relying on `as any`
 - [ ] Medium: Better hotkey registering code
 - [ ] Low: Add `muted` prop for TTS control
