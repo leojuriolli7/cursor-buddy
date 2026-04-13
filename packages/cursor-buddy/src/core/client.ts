@@ -1,19 +1,23 @@
-import { createStateMachine, type StateMachine } from "./state-machine"
-import { VoiceCaptureService } from "./services/voice-capture"
-import { AudioPlaybackService } from "./services/audio-playback"
-import { ScreenCaptureService } from "./services/screen-capture"
-import { PointerController } from "./services/pointer-controller"
 import { $audioLevel, $conversationHistory, $isEnabled } from "./atoms"
 import { parsePointingTagRaw, stripPointingTag } from "./pointing"
-import { resolveMarkerToCoordinates } from "./utils/elements"
+import { AudioPlaybackService } from "./services/audio-playback"
+import { PointerController } from "./services/pointer-controller"
+import { ScreenCaptureService } from "./services/screen-capture"
+import { VoiceCaptureService } from "./services/voice-capture"
+import { createStateMachine, type StateMachine } from "./state-machine"
 import type {
-  VoiceState,
-  CursorBuddyClientOptions,
-  CursorBuddySnapshot,
-  PointingTarget,
   AnnotatedScreenshotResult,
+  AudioPlaybackPort,
   ConversationMessage,
+  CursorBuddyClientOptions,
+  CursorBuddyServices,
+  CursorBuddySnapshot,
+  PointerControllerPort,
+  PointingTarget,
+  ScreenCapturePort,
+  VoiceCapturePort,
 } from "./types"
+import { resolveMarkerToCoordinates } from "./utils/elements"
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
@@ -48,15 +52,7 @@ function mapCoordinatesToViewport(
   }
 }
 
-/**
- * Internal services interface for dependency injection (testing).
- */
-export interface CursorBuddyServices {
-  voiceCapture?: VoiceCaptureService
-  audioPlayback?: AudioPlaybackService
-  screenCapture?: ScreenCaptureService
-  pointerController?: PointerController
-}
+export type { CursorBuddyServices } from "./types"
 
 /**
  * Framework-agnostic client for cursor buddy voice interactions.
@@ -72,10 +68,10 @@ export class CursorBuddyClient {
   private options: CursorBuddyClientOptions
 
   // Services
-  private voiceCapture: VoiceCaptureService
-  private audioPlayback: AudioPlaybackService
-  private screenCapture: ScreenCaptureService
-  private pointerController: PointerController
+  private voiceCapture: VoiceCapturePort
+  private audioPlayback: AudioPlaybackPort
+  private screenCapture: ScreenCapturePort
+  private pointerController: PointerControllerPort
   private stateMachine: StateMachine
 
   // State

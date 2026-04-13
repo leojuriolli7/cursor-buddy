@@ -82,6 +82,53 @@ export interface ConversationMessage {
 }
 
 /**
+ * Public contract for voice capture used by the core client.
+ */
+export interface VoiceCapturePort {
+  start(): Promise<void>
+  stop(): Promise<Blob>
+  onLevel(callback: (level: number) => void): void
+  dispose(): void
+}
+
+/**
+ * Public contract for audio playback used by the core client.
+ */
+export interface AudioPlaybackPort {
+  play(blob: Blob, signal?: AbortSignal): Promise<void>
+  stop(): void
+}
+
+/**
+ * Public contract for screenshot capture used by the core client.
+ */
+export interface ScreenCapturePort {
+  capture(): Promise<ScreenshotResult>
+  captureAnnotated(): Promise<AnnotatedScreenshotResult>
+}
+
+/**
+ * Public contract for pointer control used by the core client.
+ */
+export interface PointerControllerPort {
+  pointAt(target: PointingTarget): void
+  release(): void
+  isPointing(): boolean
+  subscribe(listener: () => void): () => void
+  updateFollowPosition(): void
+}
+
+/**
+ * Internal services interface for dependency injection.
+ */
+export interface CursorBuddyServices {
+  voiceCapture?: VoiceCapturePort
+  audioPlayback?: AudioPlaybackPort
+  screenCapture?: ScreenCapturePort
+  pointerController?: PointerControllerPort
+}
+
+/**
  * Cursor render props passed to custom cursor components
  */
 export interface CursorRenderProps {

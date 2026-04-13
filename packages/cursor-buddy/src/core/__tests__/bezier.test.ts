@@ -5,13 +5,10 @@ describe("animateBezierFlight", () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
-      return setTimeout(
-        () => callback(performance.now()),
-        16,
-      ) as unknown as number
+      return setTimeout(() => callback(performance.now()), 16)
     })
     vi.stubGlobal("cancelAnimationFrame", (frameId: number) => {
-      clearTimeout(frameId as unknown as ReturnType<typeof setTimeout>)
+      clearTimeout(frameId)
     })
   })
 
@@ -81,9 +78,7 @@ describe("animateBezierFlight", () => {
     vi.advanceTimersByTime(500)
 
     // Find the call with highest scale
-    const scales = onFrame.mock.calls.map(
-      (call: [unknown, unknown, number]) => call[2],
-    )
+    const scales = onFrame.mock.calls.map(([, , scale = 0]) => scale)
     const maxScale = Math.max(...scales)
 
     expect(maxScale).toBeCloseTo(1.3, 1)

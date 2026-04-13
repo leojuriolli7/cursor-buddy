@@ -1,115 +1,49 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { $audioLevel, $conversationHistory, $isEnabled } from "../atoms"
-import { CursorBuddyClient, type CursorBuddyServices } from "../client"
+import { CursorBuddyClient } from "../client"
+import {
+  createBlobResponse,
+  createDeferred,
+  createJsonResponse,
+  createMockServices,
+  createStreamResponse,
+  defaultAnnotatedScreenshot,
+} from "./test-utils"
 
-const defaultScreenshot = {
-  imageData: "data:image/jpeg;base64,test",
-  width: 1280,
-  height: 720,
-  viewportWidth: 1920,
-  viewportHeight: 1080,
-  markerMap: new Map(),
-  markerContext: "No interactive elements detected.",
-}
+function readJsonRequestBody(
+  fetchMock: ReturnType<typeof vi.fn>,
+  callIndex: number,
+) {
+  const init = fetchMock.mock.calls[callIndex]?.[1]
 
-function createJsonResponse(body: unknown, ok = true) {
-  return {
-    ok,
-    json: vi.fn().mockResolvedValue(body),
+  if (
+    !init ||
+    typeof init !== "object" ||
+    !("body" in init) ||
+    typeof init.body !== "string"
+  ) {
+    throw new Error(`Expected a JSON request body for fetch call ${callIndex}`)
   }
+
+  return JSON.parse(init.body)
 }
 
-function createBlobResponse(blob: Blob, ok = true) {
-  return {
-    ok,
-    blob: vi.fn().mockResolvedValue(blob),
+function readFetchSignal(
+  fetchMock: ReturnType<typeof vi.fn>,
+  callIndex: number,
+) {
+  const init = fetchMock.mock.calls[callIndex]?.[1]
+
+  if (
+    !init ||
+    typeof init !== "object" ||
+    !("signal" in init) ||
+    !(init.signal instanceof AbortSignal)
+  ) {
+    throw new Error(`Expected an AbortSignal for fetch call ${callIndex}`)
   }
-}
 
-function createStreamResponse(chunks: string[], ok = true) {
-  const encoder = new TextEncoder()
-  let index = 0
-
-  return {
-    ok,
-    body: {
-      getReader: () => ({
-        read: vi.fn().mockImplementation(async () => {
-          if (index >= chunks.length) {
-            return { done: true, value: undefined }
-          }
-
-          return {
-            done: false,
-            value: encoder.encode(chunks[index++]),
-          }
-        }),
-      }),
-    },
-  }
-}
-
-function createDeferred<T>() {
-  let resolve!: (value: T) => void
-  let reject!: (reason?: unknown) => void
-
-  const promise = new Promise<T>((promiseResolve, promiseReject) => {
-    resolve = promiseResolve
-    reject = promiseReject
-  })
-
-  return { promise, resolve, reject }
-}
-
-function createMockServices(
-  overrides: Partial<CursorBuddyServices> = {},
-): CursorBuddyServices & { emitLevel: (level: number) => void } {
-  let levelCallback: ((level: number) => void) | null = null
-  const pointerListeners = new Set<() => void>()
-  const pointerState = { isPointing: false }
-
-  const services: CursorBuddyServices & { emitLevel: (level: number) => void } =
-    {
-      voiceCapture: {
-        start: vi.fn().mockResolvedValue(undefined),
-        stop: vi
-          .fn()
-          .mockResolvedValue(new Blob(["audio"], { type: "audio/wav" })),
-        onLevel: vi.fn((callback: (level: number) => void) => {
-          levelCallback = callback
-        }),
-        dispose: vi.fn(),
-      } as any,
-      audioPlayback: {
-        play: vi.fn().mockResolvedValue(undefined),
-        stop: vi.fn(),
-      } as any,
-      screenCapture: {
-        capture: vi.fn().mockResolvedValue(defaultScreenshot),
-        captureAnnotated: vi.fn().mockResolvedValue(defaultScreenshot),
-      } as any,
-      pointerController: {
-        pointAt: vi.fn(() => {
-          pointerState.isPointing = true
-          pointerListeners.forEach((listener) => listener())
-        }),
-        release: vi.fn(() => {
-          pointerState.isPointing = false
-          pointerListeners.forEach((listener) => listener())
-        }),
-        isPointing: vi.fn(() => pointerState.isPointing),
-        subscribe: vi.fn((listener: () => void) => {
-          pointerListeners.add(listener)
-          return () => pointerListeners.delete(listener)
-        }),
-        updateFollowPosition: vi.fn(),
-      } as any,
-      emitLevel: (level: number) => {
-        levelCallback?.(level)
-      },
-    }
-
-  return Object.assign(services, overrides)
+  return init.signal
 }
 
 describe("CursorBuddyClient", () => {
@@ -126,16 +60,17 @@ describe("CursorBuddyClient", () => {
 
   describe("constructor", () => {
     it("wires voice level updates into the audio level atom", () => {
-      const services = createMockServices()
+      const { services, emitLevel } = createMockServices()
       new CursorBuddyClient("/api", {}, services)
 
-      services.emitLevel(0.42)
+      emitLevel(0.42)
 
       expect($audioLevel.get()).toBe(0.42)
     })
 
     it("returns the same cached snapshot until state changes", () => {
-      const client = new CursorBuddyClient("/api", {}, createMockServices())
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
 
       const firstSnapshot = client.getSnapshot()
       const secondSnapshot = client.getSnapshot()
@@ -150,7 +85,7 @@ describe("CursorBuddyClient", () => {
 
   describe("startListening", () => {
     it("transitions to listening state", () => {
-      const services = createMockServices()
+      const { services } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
 
       client.startListening()
@@ -158,13 +93,53 @@ describe("CursorBuddyClient", () => {
       expect(client.getSnapshot().state).toBe("listening")
     })
 
-    it("clears previous transcript, response, and error", () => {
-      const services = createMockServices()
+    it("clears previous transcript and response when starting a new turn", async () => {
+      const { services } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
 
-      ;(client as any).transcript = "old transcript"
-      ;(client as any).response = "old response"
-      ;(client as any).error = new Error("previous error")
+      fetchMock
+        .mockResolvedValueOnce(
+          createJsonResponse({ text: "Open the save menu" }),
+        )
+        .mockResolvedValueOnce(createStreamResponse(["Click Save"]))
+        .mockResolvedValueOnce(
+          createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
+        )
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(client.getSnapshot()).toMatchObject({
+        transcript: "Open the save menu",
+        response: "Click Save",
+        error: null,
+      })
+
+      client.startListening()
+
+      expect(client.getSnapshot()).toMatchObject({
+        transcript: "",
+        response: "",
+        error: null,
+      })
+    })
+
+    it("clears previous errors when starting a new turn", async () => {
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      fetchMock.mockResolvedValueOnce({ ok: false })
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(client.getSnapshot().error).toEqual(
+        expect.objectContaining({ message: "Transcription failed" }),
+      )
 
       client.startListening()
 
@@ -176,32 +151,33 @@ describe("CursorBuddyClient", () => {
     })
 
     it("releases any active pointing and starts voice capture", () => {
-      const services = createMockServices()
+      const { services, pointerController, voiceCapture } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
 
       client.startListening()
 
-      expect(services.pointerController?.release).toHaveBeenCalledTimes(1)
-      expect(services.voiceCapture?.start).toHaveBeenCalledTimes(1)
+      expect(pointerController.release).toHaveBeenCalledTimes(1)
+      expect(voiceCapture.start).toHaveBeenCalledTimes(1)
     })
   })
 
   describe("stopListening", () => {
     it("returns early when not currently listening", async () => {
-      const services = createMockServices()
+      const { services, voiceCapture, screenCapture } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
 
       await client.stopListening()
 
-      expect(services.voiceCapture?.stop).not.toHaveBeenCalled()
-      expect(services.screenCapture?.capture).not.toHaveBeenCalled()
+      expect(voiceCapture.stop).not.toHaveBeenCalled()
+      expect(screenCapture.captureAnnotated).not.toHaveBeenCalled()
     })
 
     it("processes a full turn, maps pointing coordinates, and appends atomic history", async () => {
       const onTranscript = vi.fn()
       const onResponse = vi.fn()
       const onPoint = vi.fn()
-      const services = createMockServices()
+      const { services, pointerController, audioPlayback } =
+        createMockServices()
       const client = new CursorBuddyClient(
         "/api",
         { onTranscript, onResponse, onPoint },
@@ -239,12 +215,12 @@ describe("CursorBuddyClient", () => {
         y: 540,
         label: "Save button",
       })
-      expect(services.pointerController?.pointAt).toHaveBeenCalledWith({
+      expect(pointerController.pointAt).toHaveBeenCalledWith({
         x: 960,
         y: 540,
         label: "Save button",
       })
-      expect(services.audioPlayback?.play).toHaveBeenCalledTimes(1)
+      expect(audioPlayback.play).toHaveBeenCalledTimes(1)
       expect($conversationHistory.get()).toEqual([
         { role: "user", content: "Open the save menu" },
         { role: "assistant", content: "Click Save" },
@@ -255,27 +231,25 @@ describe("CursorBuddyClient", () => {
       expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/chat")
       expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/tts")
 
-      const chatPayload = JSON.parse(
-        fetchMock.mock.calls[1]?.[1].body as string,
-      )
+      const chatPayload = readJsonRequestBody(fetchMock, 1)
       expect(chatPayload).toEqual({
-        screenshot: defaultScreenshot.imageData,
+        screenshot: defaultAnnotatedScreenshot.imageData,
         capture: {
-          width: defaultScreenshot.width,
-          height: defaultScreenshot.height,
+          width: defaultAnnotatedScreenshot.width,
+          height: defaultAnnotatedScreenshot.height,
         },
         transcript: "Open the save menu",
         history: [],
-        markerContext: defaultScreenshot.markerContext,
+        markerContext: defaultAnnotatedScreenshot.markerContext,
       })
 
-      const ttsPayload = JSON.parse(fetchMock.mock.calls[2]?.[1].body as string)
+      const ttsPayload = readJsonRequestBody(fetchMock, 2)
       expect(ttsPayload).toEqual({ text: "Click Save" })
     })
 
     it("does not append history for an interrupted in-flight turn", async () => {
       const onTranscript = vi.fn()
-      const services = createMockServices()
+      const { services } = createMockServices()
       const client = new CursorBuddyClient("/api", { onTranscript }, services)
       const transcribe = createDeferred<{ text: string }>()
 
@@ -307,7 +281,7 @@ describe("CursorBuddyClient", () => {
 
     it("surfaces request failures through the error state", async () => {
       const onError = vi.fn()
-      const services = createMockServices()
+      const { services } = createMockServices()
       const client = new CursorBuddyClient("/api", { onError }, services)
 
       const fetchMock = vi.fn()
@@ -328,7 +302,7 @@ describe("CursorBuddyClient", () => {
     })
 
     it("skips TTS when the cleaned response is empty", async () => {
-      const services = createMockServices()
+      const { services, audioPlayback } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
 
       const fetchMock = vi.fn()
@@ -341,7 +315,7 @@ describe("CursorBuddyClient", () => {
       client.startListening()
       await client.stopListening()
 
-      expect(services.audioPlayback?.play).not.toHaveBeenCalled()
+      expect(audioPlayback.play).not.toHaveBeenCalled()
       expect(client.getSnapshot()).toMatchObject({
         state: "idle",
         transcript: "hello",
@@ -355,24 +329,39 @@ describe("CursorBuddyClient", () => {
   })
 
   describe("interruption", () => {
-    it("aborts the previous session when starting a new one", () => {
-      const services = createMockServices()
+    it("aborts the previous session when starting a new one", async () => {
+      const { services, audioPlayback } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
+      const transcribe = createDeferred<{ text: string }>()
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockReturnValue(transcribe.promise),
+      })
 
       client.startListening()
-      const firstController = (client as any).abortController
+      const stopPromise = client.stopListening()
+      await vi.waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      })
+      const firstSignal = readFetchSignal(fetchMock, 0)
 
       client.startListening()
+      transcribe.resolve({ text: "ignored after abort" })
+      await stopPromise
 
-      expect(firstController?.signal.aborted).toBe(true)
-      expect(services.audioPlayback?.stop).toHaveBeenCalled()
+      expect(firstSignal.aborted).toBe(true)
+      expect(audioPlayback.stop).toHaveBeenCalled()
       expect($audioLevel.get()).toBe(0)
     })
   })
 
   describe("delegated controls", () => {
     it("returns the default snapshot shape before any interaction", () => {
-      const client = new CursorBuddyClient("/api", {}, createMockServices())
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
 
       expect(client.getSnapshot()).toEqual({
         state: "idle",
@@ -385,7 +374,8 @@ describe("CursorBuddyClient", () => {
     })
 
     it("updates enabled state in the snapshot", () => {
-      const client = new CursorBuddyClient("/api", {}, createMockServices())
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
 
       client.setEnabled(false)
 
@@ -394,11 +384,11 @@ describe("CursorBuddyClient", () => {
     })
 
     it("points and dismisses through the pointer controller", () => {
-      const services = createMockServices()
+      const { services, pointerController } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
 
       client.pointAt(100, 200, "Primary CTA")
-      expect(services.pointerController?.pointAt).toHaveBeenCalledWith({
+      expect(pointerController.pointAt).toHaveBeenCalledWith({
         x: 100,
         y: 200,
         label: "Primary CTA",
@@ -406,25 +396,24 @@ describe("CursorBuddyClient", () => {
       expect(client.getSnapshot().isPointing).toBe(true)
 
       client.dismissPointing()
-      expect(services.pointerController?.release).toHaveBeenCalled()
+      expect(pointerController.release).toHaveBeenCalled()
       expect(client.getSnapshot().isPointing).toBe(false)
     })
 
     it("delegates follow updates to the pointer controller", () => {
-      const services = createMockServices()
+      const { services, pointerController } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
 
       client.updateCursorPosition()
 
-      expect(
-        services.pointerController?.updateFollowPosition,
-      ).toHaveBeenCalledTimes(1)
+      expect(pointerController.updateFollowPosition).toHaveBeenCalledTimes(1)
     })
   })
 
   describe("reset and subscriptions", () => {
     it("returns to idle state on reset", () => {
-      const client = new CursorBuddyClient("/api", {}, createMockServices())
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
 
       client.startListening()
       client.reset()
@@ -432,14 +421,21 @@ describe("CursorBuddyClient", () => {
       expect(client.getSnapshot().state).toBe("idle")
     })
 
-    it("returns to idle and clears state on reset", () => {
-      const services = createMockServices()
+    it("returns to idle and clears transcript and response on reset", async () => {
+      const { services, pointerController, audioPlayback } =
+        createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
 
       client.startListening()
-      ;(client as any).transcript = "partial"
-      ;(client as any).response = "partial response"
-      ;(client as any).error = new Error("failure")
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ text: "partial" }))
+        .mockResolvedValueOnce(createStreamResponse(["partial response"]))
+        .mockResolvedValueOnce(
+          createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
+        )
+      await client.stopListening()
 
       client.reset()
 
@@ -449,12 +445,33 @@ describe("CursorBuddyClient", () => {
         response: "",
         error: null,
       })
-      expect(services.pointerController?.release).toHaveBeenCalled()
-      expect(services.audioPlayback?.stop).toHaveBeenCalled()
+      expect(pointerController.release).toHaveBeenCalled()
+      expect(audioPlayback.stop).toHaveBeenCalled()
+    })
+
+    it("clears previous errors on reset", async () => {
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      fetchMock.mockResolvedValueOnce({ ok: false })
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(client.getSnapshot().error).toEqual(
+        expect.objectContaining({ message: "Transcription failed" }),
+      )
+
+      client.reset()
+
+      expect(client.getSnapshot().error).toBeNull()
     })
 
     it("notifies listeners on state changes and stops after unsubscribe", () => {
-      const client = new CursorBuddyClient("/api", {}, createMockServices())
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
       const listener = vi.fn()
 
       const unsubscribe = client.subscribe(listener)
@@ -469,7 +486,8 @@ describe("CursorBuddyClient", () => {
     })
 
     it("unsubscribe stops future notifications", () => {
-      const client = new CursorBuddyClient("/api", {}, createMockServices())
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
       const listener = vi.fn()
 
       const unsubscribe = client.subscribe(listener)
@@ -481,11 +499,8 @@ describe("CursorBuddyClient", () => {
 
     it("calls onStateChange for listening transitions", () => {
       const onStateChange = vi.fn()
-      const client = new CursorBuddyClient(
-        "/api",
-        { onStateChange },
-        createMockServices(),
-      )
+      const { services } = createMockServices()
+      const client = new CursorBuddyClient("/api", { onStateChange }, services)
 
       client.startListening()
 
@@ -494,15 +509,12 @@ describe("CursorBuddyClient", () => {
 
     it("calls onError when voice capture start fails", async () => {
       const onError = vi.fn()
-      const services = createMockServices({
+      const { services } = createMockServices({
         voiceCapture: {
-          start: vi.fn().mockRejectedValue(new Error("mic denied")),
-          stop: vi
-            .fn()
-            .mockResolvedValue(new Blob(["audio"], { type: "audio/wav" })),
-          onLevel: vi.fn(),
-          dispose: vi.fn(),
-        } as any,
+          start: vi
+            .fn<() => Promise<void>>()
+            .mockRejectedValue(new Error("mic denied")),
+        },
       })
       const client = new CursorBuddyClient("/api", { onError }, services)
 
@@ -518,15 +530,12 @@ describe("CursorBuddyClient", () => {
     it("calls onStateChange and onError callbacks", async () => {
       const onStateChange = vi.fn()
       const onError = vi.fn()
-      const services = createMockServices({
+      const { services } = createMockServices({
         voiceCapture: {
-          start: vi.fn().mockRejectedValue(new Error("mic denied")),
-          stop: vi
-            .fn()
-            .mockResolvedValue(new Blob(["audio"], { type: "audio/wav" })),
-          onLevel: vi.fn(),
-          dispose: vi.fn(),
-        } as any,
+          start: vi
+            .fn<() => Promise<void>>()
+            .mockRejectedValue(new Error("mic denied")),
+        },
       })
       const client = new CursorBuddyClient(
         "/api",

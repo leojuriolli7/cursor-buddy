@@ -1,3 +1,4 @@
+import type { VoiceCapturePort } from "../types"
 import { encodeWAV, mergeAudioChunks } from "../utils/audio"
 import { createWorkletBlobURL } from "../utils/audio-worklet"
 
@@ -7,7 +8,7 @@ const AUDIO_LEVEL_BOOST = 10.2
 /**
  * Framework-agnostic service for voice capture using AudioWorkletNode.
  */
-export class VoiceCaptureService {
+export class VoiceCaptureService implements VoiceCapturePort {
   private audioContext: AudioContext | null = null
   private workletNode: AudioWorkletNode | null = null
   private stream: MediaStream | null = null

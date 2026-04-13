@@ -6,7 +6,7 @@ import {
   $pointingTarget,
 } from "../atoms"
 import { animateBezierFlight } from "../bezier"
-import type { PointingTarget } from "../types"
+import type { PointingTarget, PointerControllerPort } from "../types"
 
 const POINTING_LOCK_TIMEOUT_MS = 10_000
 
@@ -17,7 +17,7 @@ type PointerMode = "follow" | "flying" | "anchored"
  * Manages the pointer state machine (follow -> flying -> anchored -> follow)
  * and cursor animation.
  */
-export class PointerController {
+export class PointerController implements PointerControllerPort {
   private mode: PointerMode = "follow"
   private cancelAnimation: (() => void) | null = null
   private releaseTimeout: ReturnType<typeof setTimeout> | null = null

@@ -1,10 +1,14 @@
-import type { ScreenshotResult, AnnotatedScreenshotResult } from "../types"
+import type {
+  ScreenshotResult,
+  AnnotatedScreenshotResult,
+  ScreenCapturePort,
+} from "../types"
 import { captureViewport, captureAnnotatedViewport } from "../utils/screenshot"
 
 /**
  * Framework-agnostic service for capturing viewport screenshots.
  */
-export class ScreenCaptureService {
+export class ScreenCaptureService implements ScreenCapturePort {
   /**
    * Capture a screenshot of the current viewport.
    * @returns Screenshot result with image data and dimensions

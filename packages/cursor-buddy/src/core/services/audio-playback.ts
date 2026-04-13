@@ -1,7 +1,9 @@
+import type { AudioPlaybackPort } from "../types"
+
 /**
  * Framework-agnostic service for audio playback with abort support.
  */
-export class AudioPlaybackService {
+export class AudioPlaybackService implements AudioPlaybackPort {
   private audio: HTMLAudioElement | null = null
   private currentUrl: string | null = null
   private settlePlayback:
