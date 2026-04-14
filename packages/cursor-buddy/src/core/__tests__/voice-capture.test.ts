@@ -12,7 +12,13 @@ const mockMediaStream = {
 
 const mockWorkletPort = {
   onmessage: null as ((event: MessageEvent) => void) | null,
-  postMessage: vi.fn(),
+  postMessage: vi.fn((message: { type?: string }) => {
+    if (message.type === "flush") {
+      mockWorkletPort.onmessage?.({
+        data: { type: "flush-complete" },
+      } as MessageEvent)
+    }
+  }),
 }
 
 const mockWorkletNode = {
@@ -23,14 +29,24 @@ const mockWorkletNode = {
 
 const mockSourceNode = {
   connect: vi.fn(),
+  disconnect: vi.fn(),
+}
+
+const mockGainNode = {
+  gain: { value: 1 },
+  connect: vi.fn(),
+  disconnect: vi.fn(),
 }
 
 const mockAudioContext = {
   sampleRate: 16000,
+  destination: {},
   audioWorklet: {
     addModule: vi.fn().mockResolvedValue(undefined),
   },
   createMediaStreamSource: vi.fn().mockReturnValue(mockSourceNode),
+  createGain: vi.fn().mockReturnValue(mockGainNode),
+  resume: vi.fn().mockResolvedValue(undefined),
   close: vi.fn().mockResolvedValue(undefined),
 }
 
@@ -205,7 +221,7 @@ describe("VoiceCaptureService", () => {
       expect((service as any).chunks[0]).toBe(audioData)
     })
 
-    it("calls level callback with boosted RMS", async () => {
+    it("maps ordinary speech RMS into a usable visualization range", async () => {
       const levelCallback = vi.fn()
       service.onLevel(levelCallback)
 
@@ -213,28 +229,63 @@ describe("VoiceCaptureService", () => {
 
       // Simulate worklet sending level data
       mockWorkletPort.onmessage?.({
-        data: { type: "level", rms: 0.05 },
+        data: { type: "level", rms: 0.1 },
       } as MessageEvent)
 
       expect(levelCallback).toHaveBeenCalled()
       const calledLevel = levelCallback.mock.calls[0][0]
-      // Should be boosted (0.05 * 10.2 = 0.51)
-      expect(calledLevel).toBeGreaterThan(0.05)
+      expect(calledLevel).toBeGreaterThan(0.4)
+      expect(calledLevel).toBeLessThan(1)
     })
 
-    it("clamps boosted level to 1", async () => {
+    it("still surfaces quiet speech above the noise floor", async () => {
       const levelCallback = vi.fn()
       service.onLevel(levelCallback)
 
       await service.start()
 
-      // Simulate high RMS that would exceed 1 when boosted
+      mockWorkletPort.onmessage?.({
+        data: { type: "level", rms: 0.003 },
+      } as MessageEvent)
+
+      expect(levelCallback).toHaveBeenCalled()
+      expect(levelCallback.mock.calls[0][0]).toBeGreaterThan(0.1)
+    })
+
+    it("smooths rapid level drops instead of snapping flat", async () => {
+      const levelCallback = vi.fn()
+      service.onLevel(levelCallback)
+
+      await service.start()
+
+      mockWorkletPort.onmessage?.({
+        data: { type: "level", rms: 0.12 },
+      } as MessageEvent)
+      mockWorkletPort.onmessage?.({
+        data: { type: "level", rms: 0.01 },
+      } as MessageEvent)
+
+      expect(levelCallback).toHaveBeenCalledTimes(2)
+      const firstLevel = levelCallback.mock.calls[0][0]
+      const secondLevel = levelCallback.mock.calls[1][0]
+
+      expect(firstLevel).toBeGreaterThan(secondLevel)
+      expect(secondLevel).toBeGreaterThan(0)
+    })
+
+    it("keeps very loud input within range", async () => {
+      const levelCallback = vi.fn()
+      service.onLevel(levelCallback)
+
+      await service.start()
+
       mockWorkletPort.onmessage?.({
         data: { type: "level", rms: 0.5 },
       } as MessageEvent)
 
       const calledLevel = levelCallback.mock.calls[0][0]
       expect(calledLevel).toBeLessThanOrEqual(1)
+      expect(calledLevel).toBeGreaterThan(0.6)
     })
   })
 
