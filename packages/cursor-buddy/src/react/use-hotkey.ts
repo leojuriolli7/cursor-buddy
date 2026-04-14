@@ -1,52 +1,37 @@
 "use client"
 
 import { useEffect, useRef } from "react"
-
-interface HotkeyModifiers {
-  ctrl: boolean
-  alt: boolean
-  shift: boolean
-  meta: boolean
-}
-
-/**
- * Parse a hotkey string like "ctrl+alt" into modifier flags
- */
-function parseHotkey(hotkey: string): HotkeyModifiers {
-  const parts = hotkey.toLowerCase().split("+")
-  return {
-    ctrl: parts.includes("ctrl") || parts.includes("control"),
-    alt: parts.includes("alt") || parts.includes("option"),
-    shift: parts.includes("shift"),
-    meta:
-      parts.includes("meta") ||
-      parts.includes("cmd") ||
-      parts.includes("command"),
-  }
-}
+import {
+  createHotkeyController,
+  type HotkeyController,
+  type ParsedHotkey,
+  parseHotkey,
+} from "../core/hotkeys"
 
 /**
- * Check if a keyboard event matches the required modifiers
- */
-function matchesHotkey(
-  event: KeyboardEvent,
-  modifiers: HotkeyModifiers,
-): boolean {
-  return (
-    event.ctrlKey === modifiers.ctrl &&
-    event.altKey === modifiers.alt &&
-    event.shiftKey === modifiers.shift &&
-    event.metaKey === modifiers.meta
-  )
-}
-
-/**
- * Hook for detecting push-to-talk hotkey press/release.
+ * Hook for detecting hotkey press/release.
  *
- * @param hotkey - Hotkey string like "ctrl+alt" or "ctrl+shift"
+ * Supports:
+ * - Modifier-only hotkeys: "ctrl+alt", "cmd", "shift" (for push-to-talk)
+ * - Modifier+key hotkeys: "ctrl+k", "cmd+shift+a", "alt+f4"
+ * - Key-only hotkeys: "escape", "f1", "a"
+ *
+ * @param hotkey - Hotkey string like "ctrl+k" or "ctrl+alt"
  * @param onPress - Called when hotkey is pressed
  * @param onRelease - Called when hotkey is released
  * @param enabled - Whether the hotkey listener is active (default: true)
+ *
+ * @example
+ * ```tsx
+ * // Push-to-talk with modifier-only
+ * useHotkey('ctrl+alt', () => startRecording(), () => stopRecording())
+ *
+ * // Quick action with modifier+key
+ * useHotkey('ctrl+k', () => openCommandPalette(), () => {})
+ *
+ * // Escape to close
+ * useHotkey('escape', () => closeModal(), () => {})
+ * ```
  */
 export function useHotkey(
   hotkey: string,
@@ -54,62 +39,36 @@ export function useHotkey(
   onRelease: () => void,
   enabled: boolean = true,
 ): void {
-  const isPressedRef = useRef(false)
-  const modifiersRef = useRef<HotkeyModifiers>(parseHotkey(hotkey))
+  const parsedHotkeyRef = useRef<ParsedHotkey>(parseHotkey(hotkey))
 
-  // Use refs for callbacks to avoid stale closures in event handlers
+  useEffect(() => {
+    parsedHotkeyRef.current = parseHotkey(hotkey)
+  }, [hotkey])
+
   const onPressRef = useRef(onPress)
   const onReleaseRef = useRef(onRelease)
   onPressRef.current = onPress
   onReleaseRef.current = onRelease
 
-  // Update modifiers when hotkey changes
-  useEffect(() => {
-    modifiersRef.current = parseHotkey(hotkey)
-  }, [hotkey])
+  const controllerRef = useRef<HotkeyController | null>(null)
 
   useEffect(() => {
-    if (!enabled) {
-      // If disabled while pressed, trigger release
-      if (isPressedRef.current) {
-        isPressedRef.current = false
-        onReleaseRef.current()
-      }
-      return
-    }
-
-    function handleKeyDown(event: KeyboardEvent) {
-      if (matchesHotkey(event, modifiersRef.current) && !isPressedRef.current) {
-        isPressedRef.current = true
-        event.preventDefault()
-        onPressRef.current()
-      }
-    }
-
-    function handleKeyUp(event: KeyboardEvent) {
-      // Release when any required modifier is released
-      if (isPressedRef.current && !matchesHotkey(event, modifiersRef.current)) {
-        isPressedRef.current = false
-        onReleaseRef.current()
-      }
-    }
-
-    function handleBlur() {
-      // Release if window loses focus while hotkey is pressed
-      if (isPressedRef.current) {
-        isPressedRef.current = false
-        onReleaseRef.current()
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    window.addEventListener("keyup", handleKeyUp)
-    window.addEventListener("blur", handleBlur)
+    controllerRef.current = createHotkeyController(parsedHotkeyRef.current, {
+      onPress: () => onPressRef.current(),
+      onRelease: () => onReleaseRef.current(),
+      enabled,
+    })
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown)
-      window.removeEventListener("keyup", handleKeyUp)
-      window.removeEventListener("blur", handleBlur)
+      controllerRef.current?.destroy()
+      controllerRef.current = null
     }
+  }, [])
+
+  useEffect(() => {
+    controllerRef.current?.setEnabled(enabled)
   }, [enabled])
 }
+
+// Re-export types for convenience
+export type { ParsedHotkey } from "../core/hotkeys"

@@ -377,8 +377,6 @@ interface WaveformRenderProps {
 
 - [ ] High: Make tool calls first class: Pointing becomes tool call (once per turn) + re-use pointing bubble UI for tool calls
 - [ ] Medium: Proper test structure without relying on `as any` for audio and voice capture
-- [ ] Medium: Better hotkey registering code
-- [ ] Low: Add `muted` prop for TTS control
 
 ## License
 
