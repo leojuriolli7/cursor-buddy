@@ -2,7 +2,9 @@ import { type Mocked, vi } from "vitest"
 import type {
   AnnotatedScreenshotResult,
   AudioPlaybackPort,
+  BrowserSpeechPort,
   CursorBuddyServices,
+  LiveTranscriptionPort,
   PointerControllerPort,
   PointingTarget,
   ScreenCapturePort,
@@ -75,14 +77,19 @@ export interface MockCursorBuddyServices {
   services: CursorBuddyServices
   voiceCapture: Mocked<VoiceCapturePort>
   audioPlayback: Mocked<AudioPlaybackPort>
+  browserSpeech: Mocked<BrowserSpeechPort>
+  liveTranscription: Mocked<LiveTranscriptionPort>
   screenCapture: Mocked<ScreenCapturePort>
   pointerController: Mocked<PointerControllerPort>
   emitLevel(level: number): void
+  emitLiveTranscript(text: string): void
 }
 
 export interface MockServiceOverrides {
   voiceCapture?: Partial<Mocked<VoiceCapturePort>>
   audioPlayback?: Partial<Mocked<AudioPlaybackPort>>
+  browserSpeech?: Partial<Mocked<BrowserSpeechPort>>
+  liveTranscription?: Partial<Mocked<LiveTranscriptionPort>>
   screenCapture?: Partial<Mocked<ScreenCapturePort>>
   pointerController?: Partial<Mocked<PointerControllerPort>>
 }
@@ -91,6 +98,7 @@ export function createMockServices(
   overrides: MockServiceOverrides = {},
 ): MockCursorBuddyServices {
   let levelCallback: ((level: number) => void) | null = null
+  let partialTranscriptCallback: ((text: string) => void) | null = null
   const pointerListeners = new Set<() => void>()
   const pointerState = { isPointing: false }
 
@@ -112,6 +120,25 @@ export function createMockServices(
     stop: vi.fn<() => void>(),
   }
   audioPlayback.play.mockResolvedValue(undefined)
+
+  const browserSpeech: Mocked<BrowserSpeechPort> = {
+    isAvailable: vi.fn<() => boolean>().mockReturnValue(true),
+    speak: vi.fn<(text: string, signal?: AbortSignal) => Promise<void>>(),
+    stop: vi.fn<() => void>(),
+  }
+  browserSpeech.speak.mockResolvedValue(undefined)
+
+  const liveTranscription: Mocked<LiveTranscriptionPort> = {
+    isAvailable: vi.fn<() => boolean>().mockReturnValue(true),
+    start: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+    stop: vi.fn<() => Promise<string>>().mockResolvedValue(""),
+    onPartial: vi
+      .fn<(callback: (text: string) => void) => void>()
+      .mockImplementation((callback) => {
+        partialTranscriptCallback = callback
+      }),
+    dispose: vi.fn<() => void>(),
+  }
 
   const screenCapture: Mocked<ScreenCapturePort> = {
     capture: vi
@@ -147,6 +174,8 @@ export function createMockServices(
 
   Object.assign(voiceCapture, overrides.voiceCapture)
   Object.assign(audioPlayback, overrides.audioPlayback)
+  Object.assign(browserSpeech, overrides.browserSpeech)
+  Object.assign(liveTranscription, overrides.liveTranscription)
   Object.assign(screenCapture, overrides.screenCapture)
   Object.assign(pointerController, overrides.pointerController)
 
@@ -154,15 +183,22 @@ export function createMockServices(
     services: {
       voiceCapture,
       audioPlayback,
+      browserSpeech,
+      liveTranscription,
       screenCapture,
       pointerController,
     },
     voiceCapture,
     audioPlayback,
+    browserSpeech,
+    liveTranscription,
     screenCapture,
     pointerController,
     emitLevel(level: number) {
       levelCallback?.(level)
+    },
+    emitLiveTranscript(text: string) {
+      partialTranscriptCallback?.(text)
     },
   }
 }

@@ -9,6 +9,8 @@ import { useClient } from "./provider"
 export interface UseCursorBuddyReturn {
   /** Current voice state */
   state: VoiceState
+  /** In-progress transcript while browser transcription is listening */
+  liveTranscript: string
   /** Latest transcribed user speech */
   transcript: string
   /** Latest AI response (stripped of POINT tags) */

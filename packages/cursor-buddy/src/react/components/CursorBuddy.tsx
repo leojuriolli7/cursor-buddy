@@ -1,6 +1,11 @@
 "use client"
 
-import type { PointingTarget, VoiceState } from "../../core/types"
+import type {
+  CursorBuddySpeechConfig,
+  CursorBuddyTranscriptionConfig,
+  PointingTarget,
+  VoiceState,
+} from "../../core/types"
 import { useCursorBuddy } from "../hooks"
 import { CursorBuddyProvider } from "../provider"
 import { useHotkey } from "../use-hotkey"
@@ -14,6 +19,10 @@ export interface CursorBuddyProps
   hotkey?: string
   /** Container element for portal (defaults to document.body) */
   container?: HTMLElement | null
+  /** Transcription configuration */
+  transcription?: CursorBuddyTranscriptionConfig
+  /** Speech configuration */
+  speech?: CursorBuddySpeechConfig
   /** Callback when transcript is ready */
   onTranscript?: (text: string) => void
   /** Callback when AI responds */
@@ -59,8 +68,9 @@ function CursorBuddyInner({
  *
  * Adds an AI-powered cursor companion to your app. Users hold the hotkey
  * (default: Ctrl+Alt) to speak. The SDK captures a screenshot, transcribes
- * the speech, sends it to the AI, speaks the response, and can point at
- * elements on screen.
+ * speech in the browser or on the server based on the configured mode, sends
+ * it to the AI, speaks the response in the browser or on the server based on
+ * the configured mode, and can point at elements on screen.
  *
  * @example
  * ```tsx
@@ -80,6 +90,8 @@ export function CursorBuddy({
   endpoint,
   hotkey,
   container,
+  speech,
+  transcription,
   cursor,
   speechBubble,
   waveform,
@@ -92,6 +104,8 @@ export function CursorBuddy({
   return (
     <CursorBuddyProvider
       endpoint={endpoint}
+      speech={speech}
+      transcription={transcription}
       onTranscript={onTranscript}
       onResponse={onResponse}
       onPoint={onPoint}

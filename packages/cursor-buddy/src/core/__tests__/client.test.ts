@@ -46,6 +46,30 @@ function readFetchSignal(
   return init.signal
 }
 
+function createControlledStreamResponse(
+  reads: Array<
+    ReturnType<typeof createDeferred<ReadableStreamReadResult<Uint8Array>>>
+  >,
+) {
+  let index = 0
+
+  return {
+    ok: true,
+    body: {
+      getReader: () => ({
+        read: vi.fn().mockImplementation(() => {
+          const nextRead = reads[index++]
+          if (!nextRead) {
+            return Promise.resolve({ done: true, value: undefined })
+          }
+
+          return nextRead.promise
+        }),
+      }),
+    },
+  }
+}
+
 describe("CursorBuddyClient", () => {
   beforeEach(() => {
     $conversationHistory.set([])
@@ -93,8 +117,21 @@ describe("CursorBuddyClient", () => {
       expect(client.getSnapshot().state).toBe("listening")
     })
 
+    it("updates the live transcript while browser transcription is listening", () => {
+      const { services, emitLiveTranscript } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+
+      client.startListening()
+      emitLiveTranscript("Open the")
+
+      expect(client.getSnapshot()).toMatchObject({
+        state: "listening",
+        liveTranscript: "Open the",
+      })
+    })
+
     it("clears previous transcript and response when starting a new turn", async () => {
-      const { services } = createMockServices()
+      const { services, emitLiveTranscript } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
       const fetchMock = vi.fn()
       vi.stubGlobal("fetch", fetchMock)
@@ -112,14 +149,17 @@ describe("CursorBuddyClient", () => {
       await client.stopListening()
 
       expect(client.getSnapshot()).toMatchObject({
+        liveTranscript: "",
         transcript: "Open the save menu",
         response: "Click Save",
         error: null,
       })
 
+      emitLiveTranscript("draft transcript")
       client.startListening()
 
       expect(client.getSnapshot()).toMatchObject({
+        liveTranscript: "",
         transcript: "",
         response: "",
         error: null,
@@ -144,6 +184,7 @@ describe("CursorBuddyClient", () => {
       client.startListening()
 
       expect(client.getSnapshot()).toMatchObject({
+        liveTranscript: "",
         transcript: "",
         response: "",
         error: null,
@@ -158,6 +199,7 @@ describe("CursorBuddyClient", () => {
 
       expect(pointerController.release).toHaveBeenCalledTimes(1)
       expect(voiceCapture.start).toHaveBeenCalledTimes(1)
+      expect(services.liveTranscription?.start).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -203,6 +245,7 @@ describe("CursorBuddyClient", () => {
 
       expect(client.getSnapshot()).toMatchObject({
         state: "idle",
+        liveTranscript: "",
         transcript: "Open the save menu",
         response: "Click Save",
         error: null,
@@ -247,6 +290,394 @@ describe("CursorBuddyClient", () => {
       expect(ttsPayload).toEqual({ text: "Click Save" })
     })
 
+    it("uses the browser transcript in auto mode when available", async () => {
+      const { services, audioPlayback } = createMockServices({
+        liveTranscription: {
+          stop: vi
+            .fn<() => Promise<string>>()
+            .mockResolvedValue("Open the save menu"),
+        },
+      })
+      const client = new CursorBuddyClient(
+        "/api",
+        { transcription: { mode: "auto" } },
+        services,
+      )
+
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      fetchMock
+        .mockResolvedValueOnce(createStreamResponse(["Click Save"]))
+        .mockResolvedValueOnce(
+          createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
+        )
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(client.getSnapshot()).toMatchObject({
+        transcript: "Open the save menu",
+        response: "Click Save",
+      })
+      expect(audioPlayback.play).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/chat")
+      expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/tts")
+    })
+
+    it("fails in browser mode when browser transcription produces no final transcript", async () => {
+      const onError = vi.fn()
+      const { services } = createMockServices({
+        liveTranscription: {
+          stop: vi.fn<() => Promise<string>>().mockResolvedValue(""),
+        },
+      })
+      const client = new CursorBuddyClient(
+        "/api",
+        { onError, transcription: { mode: "browser" } },
+        services,
+      )
+
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Browser transcription did not produce a final transcript",
+        }),
+      )
+      expect(client.getSnapshot()).toMatchObject({
+        state: "idle",
+        error: expect.objectContaining({
+          message: "Browser transcription did not produce a final transcript",
+        }),
+      })
+    })
+
+    it("waits for the full chat response before TTS by default", async () => {
+      const { services, audioPlayback, browserSpeech } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+      const encoder = new TextEncoder()
+      const chatReads = [
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+      ]
+      const ttsPayloads: string[] = []
+
+      const fetchMock = vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(createJsonResponse({ text: "Help me save" }))
+        }
+
+        if (input === "/api/chat") {
+          return Promise.resolve(createControlledStreamResponse(chatReads))
+        }
+
+        if (input === "/api/tts") {
+          const body = JSON.parse(String(init?.body ?? "{}")) as {
+            text: string
+          }
+          ttsPayloads.push(body.text)
+
+          return Promise.resolve(
+            createBlobResponse(new Blob(["audio"], { type: "audio/wav" })),
+          )
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      const stopPromise = client.stopListening()
+
+      chatReads[0]?.resolve({
+        done: false,
+        value: encoder.encode("The first response sentence is long enough. "),
+      })
+
+      await vi.waitFor(() => {
+        expect(client.getSnapshot().response).toBe(
+          "The first response sentence is long enough.",
+        )
+      })
+
+      expect(ttsPayloads).toEqual([])
+      expect(audioPlayback.play).not.toHaveBeenCalled()
+      expect(browserSpeech.speak).not.toHaveBeenCalled()
+
+      chatReads[1]?.resolve({
+        done: false,
+        value: encoder.encode("The second response sentence arrives later."),
+      })
+      chatReads[2]?.resolve({ done: true, value: undefined })
+
+      await stopPromise
+
+      expect(ttsPayloads).toEqual([
+        "The first response sentence is long enough. The second response sentence arrives later.",
+      ])
+      expect(audioPlayback.play).toHaveBeenCalledTimes(1)
+    })
+
+    it("starts chunked server TTS playback before chat streaming fully completes when enabled", async () => {
+      const { services, audioPlayback } = createMockServices()
+      const client = new CursorBuddyClient(
+        "/api",
+        { speech: { allowStreaming: true } },
+        services,
+      )
+      const encoder = new TextEncoder()
+      const chatReads = [
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+      ]
+      const ttsPayloads: string[] = []
+
+      const fetchMock = vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(createJsonResponse({ text: "Help me save" }))
+        }
+
+        if (input === "/api/chat") {
+          return Promise.resolve(createControlledStreamResponse(chatReads))
+        }
+
+        if (input === "/api/tts") {
+          const body = JSON.parse(String(init?.body ?? "{}")) as {
+            text: string
+          }
+          ttsPayloads.push(body.text)
+
+          return Promise.resolve(
+            createBlobResponse(new Blob(["audio"], { type: "audio/wav" })),
+          )
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      const stopPromise = client.stopListening()
+
+      chatReads[0]?.resolve({
+        done: false,
+        value: encoder.encode("The first response sentence is long enough. "),
+      })
+
+      await vi.waitFor(() => {
+        expect(ttsPayloads).toEqual([
+          "The first response sentence is long enough.",
+        ])
+        expect(audioPlayback.play).toHaveBeenCalledTimes(1)
+        expect(client.getSnapshot().state).toBe("responding")
+      })
+
+      chatReads[1]?.resolve({
+        done: false,
+        value: encoder.encode("The second response sentence arrives later."),
+      })
+      chatReads[2]?.resolve({ done: true, value: undefined })
+
+      await stopPromise
+
+      expect(ttsPayloads).toEqual([
+        "The first response sentence is long enough.",
+        "The second response sentence arrives later.",
+      ])
+      expect(audioPlayback.play).toHaveBeenCalledTimes(2)
+      expect(client.getSnapshot()).toMatchObject({
+        state: "idle",
+        response:
+          "The first response sentence is long enough. The second response sentence arrives later.",
+      })
+    })
+
+    it("uses browser speech without hitting /tts in browser mode", async () => {
+      const { services, audioPlayback, browserSpeech } = createMockServices()
+      const client = new CursorBuddyClient(
+        "/api",
+        { speech: { mode: "browser" } },
+        services,
+      )
+
+      const fetchMock = vi.fn((input: string) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(
+            createJsonResponse({ text: "Open the save menu" }),
+          )
+        }
+
+        if (input === "/api/chat") {
+          return Promise.resolve(createStreamResponse(["Click Save"]))
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(browserSpeech.speak).toHaveBeenCalledTimes(1)
+      expect(browserSpeech.speak).toHaveBeenCalledWith(
+        "Click Save",
+        expect.any(AbortSignal),
+      )
+      expect(audioPlayback.play).not.toHaveBeenCalled()
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it("starts chunked browser speech playback before chat streaming fully completes when enabled", async () => {
+      const { services, browserSpeech, audioPlayback } = createMockServices()
+      const client = new CursorBuddyClient(
+        "/api",
+        { speech: { mode: "browser", allowStreaming: true } },
+        services,
+      )
+      const encoder = new TextEncoder()
+      const chatReads = [
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+        createDeferred<ReadableStreamReadResult<Uint8Array>>(),
+      ]
+
+      const fetchMock = vi.fn((input: string) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(createJsonResponse({ text: "Help me save" }))
+        }
+
+        if (input === "/api/chat") {
+          return Promise.resolve(createControlledStreamResponse(chatReads))
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      const stopPromise = client.stopListening()
+
+      chatReads[0]?.resolve({
+        done: false,
+        value: encoder.encode("The first response sentence is long enough. "),
+      })
+
+      await vi.waitFor(() => {
+        expect(browserSpeech.speak).toHaveBeenCalledTimes(1)
+        expect(browserSpeech.speak).toHaveBeenCalledWith(
+          "The first response sentence is long enough.",
+          expect.any(AbortSignal),
+        )
+        expect(audioPlayback.play).not.toHaveBeenCalled()
+      })
+
+      chatReads[1]?.resolve({
+        done: false,
+        value: encoder.encode("The second response sentence arrives later."),
+      })
+      chatReads[2]?.resolve({ done: true, value: undefined })
+
+      await stopPromise
+
+      expect(browserSpeech.speak).toHaveBeenCalledTimes(2)
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+    })
+
+    it("falls back to server speech in auto mode when browser speech fails", async () => {
+      const { services, audioPlayback, browserSpeech } = createMockServices({
+        browserSpeech: {
+          speak: vi
+            .fn<(text: string, signal?: AbortSignal) => Promise<void>>()
+            .mockRejectedValue(new Error("browser speech exploded")),
+        },
+      })
+      const client = new CursorBuddyClient(
+        "/api",
+        { speech: { mode: "auto" } },
+        services,
+      )
+
+      const fetchMock = vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(
+            createJsonResponse({ text: "Open the save menu" }),
+          )
+        }
+
+        if (input === "/api/chat") {
+          return Promise.resolve(createStreamResponse(["Click Save"]))
+        }
+
+        if (input === "/api/tts") {
+          return Promise.resolve(
+            createBlobResponse(new Blob(["audio"], { type: "audio/wav" })),
+          )
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(browserSpeech.speak).toHaveBeenCalledTimes(1)
+      expect(audioPlayback.play).toHaveBeenCalledTimes(1)
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+      expect(fetchMock.mock.calls[2]?.[0]).toBe("/api/tts")
+    })
+
+    it("fails in browser speech mode when browser speech is unavailable", async () => {
+      const onError = vi.fn()
+      const { services } = createMockServices({
+        browserSpeech: {
+          isAvailable: vi.fn<() => boolean>().mockReturnValue(false),
+        },
+      })
+      const client = new CursorBuddyClient(
+        "/api",
+        { onError, speech: { mode: "browser" } },
+        services,
+      )
+
+      const fetchMock = vi.fn((input: string) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(
+            createJsonResponse({ text: "Open the save menu" }),
+          )
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      await client.stopListening()
+
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/transcribe")
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Browser speech is not supported",
+        }),
+      )
+      expect(client.getSnapshot()).toMatchObject({
+        state: "idle",
+        error: expect.objectContaining({
+          message: "Browser speech is not supported",
+        }),
+      })
+    })
+
     it("does not append history when interrupted before response starts", async () => {
       const onTranscript = vi.fn()
       const { services } = createMockServices()
@@ -271,6 +702,7 @@ describe("CursorBuddyClient", () => {
 
       expect(client.getSnapshot()).toMatchObject({
         state: "listening",
+        liveTranscript: "",
         transcript: "",
         response: "",
         error: null,
@@ -318,6 +750,7 @@ describe("CursorBuddyClient", () => {
       expect(audioPlayback.play).not.toHaveBeenCalled()
       expect(client.getSnapshot()).toMatchObject({
         state: "idle",
+        liveTranscript: "",
         transcript: "hello",
         response: "",
       })
@@ -325,6 +758,78 @@ describe("CursorBuddyClient", () => {
         { role: "user", content: "hello" },
         { role: "assistant", content: "" },
       ])
+    })
+
+    it("fails the turn when any sentence TTS request fails", async () => {
+      const onError = vi.fn()
+      const { services, audioPlayback } = createMockServices({
+        audioPlayback: {
+          play: vi.fn<(blob: Blob, signal?: AbortSignal) => Promise<void>>(
+            (_blob, signal) =>
+              new Promise<void>((resolve) => {
+                if (signal?.aborted) {
+                  resolve()
+                  return
+                }
+
+                signal?.addEventListener("abort", () => resolve(), {
+                  once: true,
+                })
+              }),
+          ),
+        },
+      })
+      const streamingClient = new CursorBuddyClient(
+        "/api",
+        { onError, speech: { allowStreaming: true } },
+        services,
+      )
+
+      const fetchMock = vi.fn((input: string, init?: RequestInit) => {
+        if (input === "/api/transcribe") {
+          return Promise.resolve(
+            createJsonResponse({ text: "Explain what to click" }),
+          )
+        }
+
+        if (input === "/api/chat") {
+          return Promise.resolve(
+            createStreamResponse([
+              "The first response sentence is long enough. The second response sentence fails hard.",
+            ]),
+          )
+        }
+
+        if (input === "/api/tts") {
+          const body = JSON.parse(String(init?.body ?? "{}")) as {
+            text: string
+          }
+
+          if (body.text.startsWith("The first response sentence")) {
+            return Promise.resolve(
+              createBlobResponse(new Blob(["audio"], { type: "audio/wav" })),
+            )
+          }
+
+          return Promise.resolve({ ok: false })
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+
+      streamingClient.startListening()
+      await streamingClient.stopListening()
+
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "TTS request failed" }),
+      )
+      expect(streamingClient.getSnapshot()).toMatchObject({
+        state: "idle",
+        error: expect.objectContaining({ message: "TTS request failed" }),
+      })
+      expect(audioPlayback.stop).toHaveBeenCalled()
+      expect($conversationHistory.get()).toEqual([])
     })
   })
 
@@ -438,6 +943,7 @@ describe("CursorBuddyClient", () => {
 
       expect(client.getSnapshot()).toEqual({
         state: "idle",
+        liveTranscript: "",
         transcript: "",
         response: "",
         error: null,
@@ -514,6 +1020,7 @@ describe("CursorBuddyClient", () => {
 
       expect(client.getSnapshot()).toMatchObject({
         state: "idle",
+        liveTranscript: "",
         transcript: "",
         response: "",
         error: null,

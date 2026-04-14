@@ -5,8 +5,9 @@ AI-powered cursor companion for web apps. Push-to-talk voice assistant that can 
 ## Features
 
 - **Push-to-talk voice input** — Hold a hotkey to speak, release to send
+- **Browser-first live transcription** — Realtime transcript while speaking, with server fallback
 - **Annotated screenshot context** — AI sees your current viewport with numbered interactive elements
-- **Voice responses** — Text-to-speech playback
+- **Voice responses** — Browser or server TTS, with optional streaming playback
 - **Cursor pointing** — AI can point at UI elements it references
 - **Voice interruption** — Start talking again to cut off current response
 - **Framework agnostic** — Core client works without React, adapter-based architecture
@@ -25,6 +26,10 @@ pnpm add cursor-buddy
 ### 1. Server Setup
 
 Create an API route that handles chat, transcription, and TTS.
+
+Keep `transcriptionModel` configured if you want browser transcription to fall
+back to the server in `auto` mode. Keep `speechModel` configured if you want
+server speech or browser speech fallback in `auto` mode.
 
 ```ts
 // lib/cursor-buddy.ts
@@ -76,8 +81,8 @@ That's it! Hold **Ctrl+Alt** to speak, release to send.
 createCursorBuddyHandler({
   // Required
   model: LanguageModel,              // AI SDK chat model
-  speechModel: SpeechModel,          // AI SDK speech model
-  transcriptionModel: TranscriptionModel,  // AI SDK transcription model
+  speechModel: SpeechModel,          // Optional server TTS model
+  transcriptionModel: TranscriptionModel,  // Optional server fallback for STT
 
   // Optional
   system: string | ((ctx) => string),  // Custom system prompt
@@ -114,6 +119,10 @@ createCursorBuddyHandler({
   // Optional
   hotkey="ctrl+alt"              // Push-to-talk hotkey (default: "ctrl+alt")
   container={element}            // Portal container (default: document.body)
+  transcription={{ mode: "auto" }} // "auto" | "browser" | "server"
+  speech={{ mode: "server", allowStreaming: false }}
+  // mode: "auto" | "browser" | "server"
+  // allowStreaming: speak sentence-by-sentence while chat streams
 
   // Custom components
   cursor={(props) => <CustomCursor {...props} />}
@@ -128,6 +137,31 @@ createCursorBuddyHandler({
   onError={(error) => {}}        // Called on error
 />
 ```
+
+### Transcription Modes
+
+- `"auto"` — Try browser speech recognition first, then fall back to the
+  server transcription route if needed.
+- `"browser"` — Require browser speech recognition. If it fails, the turn
+  errors and no server fallback is attempted.
+- `"server"` — Skip browser speech recognition and always use the server
+  transcription route.
+
+### Speech Modes
+
+- `"auto"` — Try browser speech synthesis first, then fall back to the server
+  TTS route if browser speech is unavailable or fails.
+- `"browser"` — Require browser speech synthesis. If it fails, the turn
+  errors and no server fallback is attempted.
+- `"server"` — Skip browser speech synthesis and always use the server TTS
+  route.
+
+### Speech Streaming
+
+- `speech.allowStreaming: false` — Wait for the full `/chat` response, then
+  speak it once.
+- `speech.allowStreaming: true` — Speak completed sentence segments as the chat
+  stream arrives.
 
 ## Customization
 
@@ -196,6 +230,7 @@ function App() {
 function MyCustomUI() {
   const {
     state,           // "idle" | "listening" | "processing" | "responding"
+    liveTranscript,  // In-progress transcript while speaking
     transcript,      // Latest user speech
     response,        // Latest AI response
     audioLevel,      // 0-1, for waveform visualization
@@ -215,6 +250,7 @@ function MyCustomUI() {
   return (
     <div>
       <p>State: {state}</p>
+      <p>Live transcript: {liveTranscript}</p>
       <button
         onMouseDown={startListening}
         onMouseUp={stopListening}
@@ -234,6 +270,8 @@ For non-React environments, use the core client directly:
 import { CursorBuddyClient } from "cursor-buddy"
 
 const client = new CursorBuddyClient("/api/cursor-buddy", {
+  transcription: { mode: "auto" },
+  speech: { mode: "server", allowStreaming: false },
   onStateChange: (state) => console.log("State:", state),
   onTranscript: (text) => console.log("Transcript:", text),
   onResponse: (text) => console.log("Response:", text),
@@ -321,21 +359,22 @@ interface WaveformRenderProps {
 ## How It Works
 
 1. User holds the hotkey (Ctrl+Alt)
-2. Microphone captures audio, waveform shows audio level
+2. Microphone captures audio, waveform shows audio level, and browser speech recognition starts when available
 3. User releases hotkey
 4. An annotated screenshot of the viewport is captured, with numbered markers on visible interactive elements
-5. Audio is transcribed via AI SDK
+5. The client prefers the browser transcript; if it is unavailable or empty in `auto` mode, the recorded audio is transcribed on the server
 6. Screenshot + marker context are sent to the AI model
 7. AI responds with text, optionally including a pointing tag:
    - Preferred: `[POINT:5:Submit]` for numbered interactive elements
    - Fallback: `[POINT:640,360:Error text]` for arbitrary screen coordinates
-8. Response is spoken via TTS
+8. Response is spoken in the browser or on the server based on `speech.mode`,
+   and can either wait for the full response or stream sentence-by-sentence
+   based on `speech.allowStreaming`
 9. If a marker tag is present, it is resolved back to the live DOM element; if a coordinate tag is present, it is mapped back to the live viewport; then the cursor animates to the target location
 10. **If user presses hotkey again at any point, current response is interrupted**
 
 ## TODOs
 
-- [ ] Highest: Faster transcription -> chat -> TTS flow (starting with single server endpoint instead of 3 separate client calls + faster models) + realtime transcription as user speaks + chunked streamed TTS
 - [ ] High: Make tool calls first class: Pointing becomes tool call (once per turn) + re-use pointing bubble UI for tool calls
 - [ ] Medium: Proper test structure without relying on `as any` for audio and voice capture
 - [ ] Medium: Better hotkey registering code

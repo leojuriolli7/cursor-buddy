@@ -9,8 +9,7 @@ export type VoiceState = "idle" | "listening" | "processing" | "responding"
 export type VoiceEvent =
   | { type: "HOTKEY_PRESSED" }
   | { type: "HOTKEY_RELEASED" }
-  | { type: "TRANSCRIPTION_COMPLETE"; transcript: string }
-  | { type: "AI_RESPONSE_COMPLETE"; response: string }
+  | { type: "RESPONSE_STARTED" }
   | { type: "TTS_COMPLETE" }
   | { type: "ERROR"; error: Error }
 
@@ -61,7 +60,7 @@ export interface ScreenshotResult {
 }
 
 // Re-export MarkerMap type from elements module
-export type { MarkerMap, ElementMarker } from "./utils/elements"
+export type { ElementMarker, MarkerMap } from "./utils/elements"
 
 /**
  * Annotated screenshot result with marker map.
@@ -82,6 +81,59 @@ export interface ConversationMessage {
 }
 
 /**
+ * Selects where media processing happens.
+ */
+export type CursorBuddyMediaMode = "auto" | "browser" | "server"
+
+/**
+ * Controls how user speech is transcribed before it is sent to the chat model.
+ */
+export interface CursorBuddyTranscriptionConfig {
+  /**
+   * Selects where transcription happens.
+   *
+   * - "auto": Try browser speech recognition first, then fall back to server
+   *   transcription if browser recognition is unavailable, fails, or does not
+   *   produce a final transcript.
+   * - "browser": Require browser speech recognition. If it is unavailable or
+   *   fails, the turn errors and no server fallback is attempted.
+   * - "server": Skip browser speech recognition and always use server
+   *   transcription.
+   *
+   * @default "auto"
+   */
+  mode?: CursorBuddyMediaMode
+}
+
+/**
+ * Controls how assistant speech is synthesized before it is played back.
+ */
+export interface CursorBuddySpeechConfig {
+  /**
+   * Selects where speech synthesis happens.
+   *
+   * - "auto": Try browser speech synthesis first, then fall back to server
+   *   synthesis if browser speech is unavailable or fails.
+   * - "browser": Require browser speech synthesis. If it is unavailable or
+   *   fails, the turn errors and no server fallback is attempted.
+   * - "server": Skip browser speech synthesis and always use server TTS.
+   *
+   * @default "server"
+   */
+  mode?: CursorBuddyMediaMode
+
+  /**
+   * Whether speech may start before the full chat response is available.
+   *
+   * When enabled, completed sentence segments are spoken as soon as they are
+   * ready. When disabled, speech waits for the full chat response first.
+   *
+   * @default false
+   */
+  allowStreaming?: boolean
+}
+
+/**
  * Public contract for voice capture used by the core client.
  */
 export interface VoiceCapturePort {
@@ -96,6 +148,26 @@ export interface VoiceCapturePort {
  */
 export interface AudioPlaybackPort {
   play(blob: Blob, signal?: AbortSignal): Promise<void>
+  stop(): void
+}
+
+/**
+ * Public contract for browser-side live transcription.
+ */
+export interface LiveTranscriptionPort {
+  isAvailable(): boolean
+  start(): Promise<void>
+  stop(): Promise<string>
+  onPartial(callback: (text: string) => void): void
+  dispose(): void
+}
+
+/**
+ * Public contract for browser-side speech synthesis.
+ */
+export interface BrowserSpeechPort {
+  isAvailable(): boolean
+  speak(text: string, signal?: AbortSignal): Promise<void>
   stop(): void
 }
 
@@ -124,6 +196,8 @@ export interface PointerControllerPort {
 export interface CursorBuddyServices {
   voiceCapture?: VoiceCapturePort
   audioPlayback?: AudioPlaybackPort
+  liveTranscription?: LiveTranscriptionPort
+  browserSpeech?: BrowserSpeechPort
   screenCapture?: ScreenCapturePort
   pointerController?: PointerControllerPort
 }
@@ -168,6 +242,19 @@ export interface WaveformRenderProps {
  * Configuration options for CursorBuddyClient
  */
 export interface CursorBuddyClientOptions {
+  /**
+   * Transcription configuration.
+   *
+   * If omitted, Cursor Buddy uses `{ mode: "auto" }`.
+   */
+  transcription?: CursorBuddyTranscriptionConfig
+  /**
+   * Speech configuration.
+   *
+   * If omitted, Cursor Buddy uses
+   * `{ mode: "server", allowStreaming: false }`.
+   */
+  speech?: CursorBuddySpeechConfig
   /** Callback when transcript is ready */
   onTranscript?: (text: string) => void
   /** Callback when AI responds */
@@ -186,6 +273,11 @@ export interface CursorBuddyClientOptions {
 export interface CursorBuddySnapshot {
   /** Current voice state */
   state: VoiceState
+  /**
+   * In-progress transcript while the user is speaking.
+   * Populated only when browser transcription is active.
+   */
+  liveTranscript: string
   /** Latest transcribed user speech */
   transcript: string
   /** Latest AI response (stripped of POINT tags) */

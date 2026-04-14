@@ -8,6 +8,19 @@ export async function handleTranscribe(
   request: Request,
   config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
+  if (!config.transcriptionModel) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "Server transcription is not configured. Provide a transcriptionModel or use browser transcription only.",
+      }),
+      {
+        status: 501,
+        headers: { "Content-Type": "application/json" },
+      },
+    )
+  }
+
   const formData = await request.formData()
   const audioFile = formData.get("audio")
 

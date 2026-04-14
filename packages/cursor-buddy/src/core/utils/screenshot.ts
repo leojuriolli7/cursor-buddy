@@ -1,7 +1,7 @@
 import html2canvas from "html2canvas-pro"
-import type { ScreenshotResult, AnnotatedScreenshotResult } from "../types"
-import { createMarkerMap } from "./elements"
+import type { AnnotatedScreenshotResult, ScreenshotResult } from "../types"
 import { createAnnotatedCanvas, generateMarkerContext } from "./annotations"
+import { createMarkerMap } from "./elements"
 
 const CLONE_RESOURCE_TIMEOUT_MS = 3000
 
@@ -86,7 +86,9 @@ async function waitForClonedDocumentStyles(doc: Document): Promise<void> {
   await waitForNextPaint(doc)
 }
 
-function getHtml2CanvasOptions(captureMetrics: ReturnType<typeof getCaptureMetrics>) {
+function getHtml2CanvasOptions(
+  captureMetrics: ReturnType<typeof getCaptureMetrics>,
+) {
   return {
     scale: 1,
     useCORS: true,
@@ -139,7 +141,10 @@ export async function captureViewport(): Promise<ScreenshotResult> {
   let canvas: HTMLCanvasElement
 
   try {
-    canvas = await html2canvas(document.body, getHtml2CanvasOptions(captureMetrics))
+    canvas = await html2canvas(
+      document.body,
+      getHtml2CanvasOptions(captureMetrics),
+    )
   } catch {
     canvas = createFallbackCanvas()
   }

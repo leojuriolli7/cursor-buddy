@@ -8,11 +8,17 @@ export interface CursorBuddyHandlerConfig {
   model: LanguageModel
   modelProviderMetadata?: Record<string, any>
 
-  /** AI SDK speech model for TTS (e.g., openai.speech("tts-1")) */
-  speechModel: SpeechModel
+  /**
+   * AI SDK speech model for TTS (e.g., openai.speech("tts-1")).
+   * Optional when clients use browser-only speech.
+   */
+  speechModel?: SpeechModel
 
-  /** AI SDK transcription model (e.g., openai.transcription("whisper-1")) */
-  transcriptionModel: TranscriptionModel
+  /**
+   * AI SDK transcription model (e.g., openai.transcription("whisper-1")).
+   * Optional when clients use browser-only transcription.
+   */
+  transcriptionModel?: TranscriptionModel
 
   /**
    * System prompt for the AI. Can be a string or a function that receives

@@ -1,4 +1,4 @@
-import type { PointingTarget, ParsedPointingTag } from "./types"
+import type { ParsedPointingTag } from "./types"
 
 /**
  * Parses POINT tags from AI responses.
@@ -10,12 +10,49 @@ import type { PointingTarget, ParsedPointingTag } from "./types"
 
 // Matches both formats: [POINT:5:label] or [POINT:640,360:label]
 const POINTING_TAG_REGEX = /\[POINT:(\d+)(?:,(\d+))?:([^\]]+)\]\s*$/
+const PARTIAL_POINTING_PREFIXES = new Set([
+  "[",
+  "[P",
+  "[PO",
+  "[POI",
+  "[POIN",
+  "[POINT",
+  "[POINT:",
+])
+
+function stripTrailingPointingTag(
+  response: string,
+  trimResult: boolean,
+): string {
+  const stripped = response.replace(POINTING_TAG_REGEX, "")
+  return trimResult ? stripped.trim() : stripped
+}
+
+function getPartialPointingTagStart(response: string): number {
+  const lastOpenBracket = response.lastIndexOf("[")
+  if (lastOpenBracket === -1) return -1
+
+  const suffix = response.slice(lastOpenBracket).trimEnd()
+
+  if (suffix.includes("]")) return -1
+  if (suffix.startsWith("[POINT:")) {
+    let start = lastOpenBracket
+    while (start > 0 && /\s/.test(response[start - 1] ?? "")) {
+      start--
+    }
+    return start
+  }
+
+  return PARTIAL_POINTING_PREFIXES.has(suffix) ? lastOpenBracket : -1
+}
 
 /**
  * Parse pointing tag into structured result.
  * Returns null if no valid POINT tag is found at the end.
  */
-export function parsePointingTagRaw(response: string): ParsedPointingTag | null {
+export function parsePointingTagRaw(
+  response: string,
+): ParsedPointingTag | null {
   const match = response.match(POINTING_TAG_REGEX)
   if (!match) return null
 
@@ -32,28 +69,24 @@ export function parsePointingTagRaw(response: string): ParsedPointingTag | null 
 }
 
 /**
- * Extract pointing target from response text.
- * For marker-based pointing, returns null (needs resolution via marker map).
- * For coordinate-based pointing, returns the target directly.
- *
- * @deprecated Use parsePointingTagRaw for full marker support
- */
-export function parsePointingTag(response: string): PointingTarget | null {
-  const parsed = parsePointingTagRaw(response)
-  if (!parsed) return null
-
-  if (parsed.type === "coordinates") {
-    return { x: parsed.x, y: parsed.y, label: parsed.label }
-  }
-
-  // Marker-based pointing needs resolution - return null here
-  // Client should use parsePointingTagRaw + resolveMarkerToCoordinates
-  return null
-}
-
-/**
  * Remove POINT tag from response text for display/TTS.
  */
 export function stripPointingTag(response: string): string {
-  return response.replace(POINTING_TAG_REGEX, "").trim()
+  return stripTrailingPointingTag(response, true)
+}
+
+/**
+ * Strip complete or partial trailing POINT syntax while the response streams.
+ * This keeps the visible text and TTS input stable even if the tag arrives
+ * incrementally over multiple chunks.
+ */
+export function stripTrailingPointingSyntax(response: string): string {
+  const withoutCompleteTag = stripTrailingPointingTag(response, false)
+  const partialTagStart = getPartialPointingTagStart(withoutCompleteTag)
+
+  if (partialTagStart === -1) {
+    return withoutCompleteTag.trimEnd()
+  }
+
+  return withoutCompleteTag.slice(0, partialTagStart).trimEnd()
 }

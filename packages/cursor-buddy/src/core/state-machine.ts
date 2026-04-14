@@ -16,7 +16,8 @@ const transitions: Record<
     ERROR: "idle",
   },
   processing: {
-    AI_RESPONSE_COMPLETE: "responding",
+    RESPONSE_STARTED: "responding",
+    TTS_COMPLETE: "idle",
     HOTKEY_PRESSED: "listening", // Interruption
     ERROR: "idle",
   },

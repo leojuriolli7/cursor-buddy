@@ -8,6 +8,20 @@ export async function handleTTS(
   request: Request,
   config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
+  if (!config.speechModel) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "Server speech is not configured. Provide a speechModel or use browser speech only.",
+      }),
+      {
+        status: 501,
+        headers: { "Content-Type": "application/json" },
+      },
+    )
+  }
+
+  const outputFormat = "wav"
   const body = (await request.json()) as TTSRequestBody
   const { text } = body
 
@@ -21,6 +35,7 @@ export async function handleTTS(
   const result = await generateSpeech({
     model: config.speechModel,
     text,
+    outputFormat,
   })
 
   // Create a new ArrayBuffer copy to satisfy TypeScript's strict typing
@@ -28,7 +43,7 @@ export async function handleTTS(
 
   return new Response(audioData, {
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": "audio/wav",
     },
   })
 }

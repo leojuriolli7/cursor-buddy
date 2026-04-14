@@ -207,6 +207,18 @@ describe("VoiceCaptureService", () => {
     })
   })
 
+  describe("dispose", () => {
+    it("preserves the level callback so the service can be reused", () => {
+      const callback = vi.fn()
+      service.onLevel(callback)
+
+      service.dispose()
+
+      expect((service as any).levelCallback).toBe(callback)
+      expect(callback).toHaveBeenCalledWith(0)
+    })
+  })
+
   describe("audio data handling", () => {
     it("collects audio chunks from worklet messages", async () => {
       await service.start()

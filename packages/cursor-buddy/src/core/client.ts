@@ -1,26 +1,60 @@
 import { $audioLevel, $conversationHistory, $isEnabled } from "./atoms"
-import { parsePointingTagRaw, stripPointingTag } from "./pointing"
+import { parsePointingTagRaw } from "./pointing"
 import { AudioPlaybackService } from "./services/audio-playback"
+import { BrowserSpeechService } from "./services/browser-speech"
+import { LiveTranscriptionService } from "./services/live-transcription"
 import { PointerController } from "./services/pointer-controller"
 import { ScreenCaptureService } from "./services/screen-capture"
+import {
+  type SpeechPlaybackTask,
+  TTSPlaybackQueue,
+} from "./services/tts-playback-queue"
 import { VoiceCaptureService } from "./services/voice-capture"
 import { createStateMachine, type StateMachine } from "./state-machine"
 import type {
   AnnotatedScreenshotResult,
   AudioPlaybackPort,
+  BrowserSpeechPort,
   ConversationMessage,
   CursorBuddyClientOptions,
+  CursorBuddyMediaMode,
   CursorBuddyServices,
   CursorBuddySnapshot,
+  LiveTranscriptionPort,
   PointerControllerPort,
   PointingTarget,
   ScreenCapturePort,
   VoiceCapturePort,
 } from "./types"
 import { resolveMarkerToCoordinates } from "./utils/elements"
+import { toError } from "./utils/error"
+import { ProgressiveResponseProcessor } from "./utils/response-processor"
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
+}
+
+async function readErrorMessage(
+  response: Response,
+  fallbackMessage: string,
+): Promise<string> {
+  try {
+    // Prefer structured JSON errors from our handlers, but degrade gracefully
+    // to plain text if the route returns a different payload.
+    const contentType = response.headers.get("Content-Type") ?? ""
+
+    if (contentType.includes("application/json")) {
+      const body = (await response.json()) as { error?: string }
+      if (body?.error) return body.error
+    }
+
+    const text = await response.text()
+    if (text) return text
+  } catch {
+    // Fall back to the generic message when the response body cannot be read.
+  }
+
+  return fallbackMessage
 }
 
 /**
@@ -70,16 +104,20 @@ export class CursorBuddyClient {
   // Services
   private voiceCapture: VoiceCapturePort
   private audioPlayback: AudioPlaybackPort
+  private browserSpeech: BrowserSpeechPort
+  private liveTranscription: LiveTranscriptionPort
   private screenCapture: ScreenCapturePort
   private pointerController: PointerControllerPort
   private stateMachine: StateMachine
 
   // State
+  private liveTranscript = ""
   private transcript = ""
   private response = ""
   private error: Error | null = null
   private abortController: AbortController | null = null
   private historyCommittedForTurn = false
+  private speechProviderForTurn: "browser" | "server" | null = null
 
   // Cached snapshot for useSyncExternalStore (must be referentially stable)
   private cachedSnapshot: CursorBuddySnapshot
@@ -98,6 +136,9 @@ export class CursorBuddyClient {
     // Initialize services (allow injection for testing)
     this.voiceCapture = services.voiceCapture ?? new VoiceCaptureService()
     this.audioPlayback = services.audioPlayback ?? new AudioPlaybackService()
+    this.browserSpeech = services.browserSpeech ?? new BrowserSpeechService()
+    this.liveTranscription =
+      services.liveTranscription ?? new LiveTranscriptionService()
     this.screenCapture = services.screenCapture ?? new ScreenCaptureService()
     this.pointerController =
       services.pointerController ?? new PointerController()
@@ -108,6 +149,11 @@ export class CursorBuddyClient {
 
     // Wire up audio level to atom
     this.voiceCapture.onLevel((level) => $audioLevel.set(level))
+    this.liveTranscription.onPartial((text) => {
+      if (this.liveTranscript === text) return
+      this.liveTranscript = text
+      this.notify()
+    })
 
     // Wire up state machine changes
     this.stateMachine.subscribe(() => {
@@ -130,10 +176,12 @@ export class CursorBuddyClient {
     this.abort()
 
     // 2. Clear UI state immediately
+    this.liveTranscript = ""
     this.transcript = ""
     this.response = ""
     this.error = null
     this.historyCommittedForTurn = false
+    this.speechProviderForTurn = null
     this.pointerController.release()
 
     // 3. Transition state
@@ -142,7 +190,15 @@ export class CursorBuddyClient {
 
     // 4. Start mic (async, errors go to error state)
     this.abortController = new AbortController()
-    this.voiceCapture.start().catch((err) => this.handleError(err))
+    const signal = this.abortController.signal
+
+    this.beginListeningSession(signal).catch((error) => {
+      if (signal.aborted) return
+
+      this.voiceCapture.dispose()
+      this.liveTranscription.dispose()
+      this.handleError(toError(error, "Failed to start listening"))
+    })
   }
 
   /**
@@ -153,48 +209,60 @@ export class CursorBuddyClient {
 
     this.stateMachine.transition({ type: "HOTKEY_RELEASED" })
     const signal = this.abortController?.signal
+    let turnFailure: Error | null = null
+
+    const failTurn = (error: Error) => {
+      if (turnFailure || signal?.aborted) return
+
+      turnFailure = error
+      this.audioPlayback.stop()
+      this.browserSpeech.stop()
+      this.abortController?.abort()
+    }
 
     try {
-      // Stop mic, capture annotated screenshot in parallel
-      const [audioBlob, screenshot] = await Promise.all([
+      // Stop mic/browser transcription and capture annotated screenshot in parallel
+      const [audioBlob, screenshot, browserTranscript] = await Promise.all([
         this.voiceCapture.stop(),
         this.screenCapture.captureAnnotated(),
+        this.stopLiveTranscription(),
       ])
 
+      if (turnFailure) throw turnFailure
       if (signal?.aborted) return
 
-      // Transcribe
-      const transcript = await this.transcribe(audioBlob, signal)
+      // Resolve transcript from browser or server fallback
+      const transcript = await this.resolveTranscript(
+        browserTranscript,
+        audioBlob,
+        signal,
+      )
+      if (turnFailure) throw turnFailure
       if (signal?.aborted) return
 
+      this.liveTranscript = ""
       this.transcript = transcript
       this.options.onTranscript?.(transcript)
       this.notify()
 
-      // Chat (with marker context)
-      const response = await this.chat(transcript, screenshot, signal)
+      this.prepareSpeechMode()
+
+      // Chat stream + progressive sentence TTS
+      const { cleanResponse, fullResponse, playbackQueue } =
+        await this.chatAndSpeak(transcript, screenshot, signal, {
+          onFailure: failTurn,
+          onPlaybackStart: () => {
+            this.stateMachine.transition({ type: "RESPONSE_STARTED" })
+          },
+        })
+
+      if (turnFailure) throw turnFailure
       if (signal?.aborted) return
 
       // Parse pointing tag and strip from response
-      const parsed = parsePointingTagRaw(response)
-      const cleanResponse = stripPointingTag(response)
+      const parsed = parsePointingTagRaw(fullResponse)
 
-      this.response = cleanResponse
-      this.stateMachine.transition({
-        type: "AI_RESPONSE_COMPLETE",
-        response: cleanResponse,
-      })
       this.options.onResponse?.(cleanResponse)
-
-      // Update history on successful completion
-      const history = $conversationHistory.get()
-      const newHistory: ConversationMessage[] = [
-        ...history,
-        { role: "user", content: transcript },
-        { role: "assistant", content: cleanResponse },
-      ]
-      $conversationHistory.set(newHistory)
-      this.historyCommittedForTurn = true
 
       // Resolve pointing target (marker-based or coordinate-based)
       let pointTarget: PointingTarget | null = null
@@ -226,17 +294,30 @@ export class CursorBuddyClient {
         this.pointerController.pointAt(pointTarget)
       }
 
-      // TTS
-      if (cleanResponse) {
-        await this.speak(cleanResponse, signal)
-      }
+      await playbackQueue.waitForCompletion()
+
+      if (turnFailure) throw turnFailure
       if (signal?.aborted) return
+
+      // Update history only after audio playback succeeds for the full turn
+      const history = $conversationHistory.get()
+      const newHistory: ConversationMessage[] = [
+        ...history,
+        { role: "user", content: transcript },
+        { role: "assistant", content: cleanResponse },
+      ]
+      $conversationHistory.set(newHistory)
+      this.historyCommittedForTurn = true
 
       this.stateMachine.transition({ type: "TTS_COMPLETE" })
     } catch (err) {
+      if (turnFailure) {
+        this.handleError(turnFailure)
+        return
+      }
       // Interruption is not an error
       if (signal?.aborted) return
-      this.handleError(err instanceof Error ? err : new Error("Unknown error"))
+      this.handleError(toError(err))
     }
   }
 
@@ -267,6 +348,7 @@ export class CursorBuddyClient {
    */
   reset(): void {
     this.abort()
+    this.liveTranscript = ""
     this.transcript = ""
     this.response = ""
     this.error = null
@@ -306,6 +388,7 @@ export class CursorBuddyClient {
   private buildSnapshot(): CursorBuddySnapshot {
     return {
       state: this.stateMachine.getState(),
+      liveTranscript: this.liveTranscript,
       transcript: this.transcript,
       response: this.response,
       error: this.error,
@@ -322,7 +405,11 @@ export class CursorBuddyClient {
 
     this.abortController?.abort()
     this.abortController = null
+    this.voiceCapture.dispose()
+    this.liveTranscription.dispose()
     this.audioPlayback.stop()
+    this.browserSpeech.stop()
+    this.speechProviderForTurn = null
     // Reset audio level on abort
     $audioLevel.set(0)
   }
@@ -357,18 +444,30 @@ export class CursorBuddyClient {
     })
 
     if (!response.ok) {
-      throw new Error("Transcription failed")
+      throw new Error(await readErrorMessage(response, "Transcription failed"))
     }
 
     const { text } = await response.json()
     return text
   }
 
-  private async chat(
+  /**
+   * Stream the chat response, keep the visible text updated, and feed complete
+   * speech segments into the TTS queue as soon as they are ready.
+   */
+  private async chatAndSpeak(
     transcript: string,
     screenshot: AnnotatedScreenshotResult,
-    signal?: AbortSignal,
-  ): Promise<string> {
+    signal: AbortSignal | undefined,
+    options: {
+      onFailure: (error: Error) => void
+      onPlaybackStart: () => void
+    },
+  ): Promise<{
+    cleanResponse: string
+    fullResponse: string
+    playbackQueue: TTSPlaybackQueue
+  }> {
     const history = $conversationHistory.get()
 
     const response = await fetch(`${this.endpoint}/chat`, {
@@ -391,29 +490,78 @@ export class CursorBuddyClient {
       throw new Error("Chat request failed")
     }
 
-    // Stream the response
     const reader = response.body?.getReader()
     if (!reader) throw new Error("No response body")
 
     const decoder = new TextDecoder()
-    let fullResponse = ""
+    const responseProcessor = new ProgressiveResponseProcessor()
+    const playbackQueue = new TTSPlaybackQueue({
+      onError: options.onFailure,
+      onPlaybackStart: options.onPlaybackStart,
+      prepare: (text, currentSignal) =>
+        this.prepareSpeechSegment(text, currentSignal),
+      signal,
+    })
+    const shouldStreamSpeech = this.isSpeechStreamingEnabled()
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
       const chunk = decoder.decode(value, { stream: true })
-      fullResponse += chunk
+      const { speechSegments, visibleText } = responseProcessor.push(chunk)
 
-      // Update response progressively for UI
-      this.response = stripPointingTag(fullResponse)
-      this.notify()
+      if (shouldStreamSpeech) {
+        // Queue speech as early as possible, but keep playback ordered so the
+        // spoken response stays aligned with the streamed text.
+        for (const speechSegment of speechSegments) {
+          playbackQueue.enqueue(speechSegment)
+        }
+      }
+
+      this.updateResponse(visibleText)
     }
 
-    return fullResponse
+    const trailingChunk = decoder.decode()
+    if (trailingChunk) {
+      const { speechSegments, visibleText } =
+        responseProcessor.push(trailingChunk)
+
+      if (shouldStreamSpeech) {
+        for (const speechSegment of speechSegments) {
+          playbackQueue.enqueue(speechSegment)
+        }
+      }
+
+      this.updateResponse(visibleText)
+    }
+
+    const finalizedResponse = responseProcessor.finish()
+
+    if (shouldStreamSpeech) {
+      for (const speechSegment of finalizedResponse.speechSegments) {
+        playbackQueue.enqueue(speechSegment)
+      }
+    } else {
+      playbackQueue.enqueue(finalizedResponse.finalResponseText)
+    }
+
+    this.updateResponse(finalizedResponse.finalResponseText)
+
+    return {
+      cleanResponse: finalizedResponse.finalResponseText,
+      fullResponse: finalizedResponse.fullResponse,
+      playbackQueue,
+    }
   }
 
-  private async speak(text: string, signal?: AbortSignal): Promise<void> {
+  /**
+   * Request server-side TTS audio for one text segment.
+   */
+  private async synthesizeSpeech(
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<Blob> {
     const response = await fetch(`${this.endpoint}/tts`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -422,17 +570,295 @@ export class CursorBuddyClient {
     })
 
     if (!response.ok) {
-      throw new Error("TTS request failed")
+      throw new Error(await readErrorMessage(response, "TTS request failed"))
     }
 
-    const audioBlob = await response.blob()
-    await this.audioPlayback.play(audioBlob, signal)
+    return response.blob()
+  }
+
+  /**
+   * Resolve the initial speech provider for this turn.
+   *
+   * Decision tree:
+   * 1. In `server` mode, always synthesize on the server.
+   * 2. In `browser` mode, require browser speech support up front.
+   * 3. In `auto` mode, prefer browser speech when available and keep that
+   *    choice cached so later segments stay on the same provider unless a
+   *    browser failure forces a one-way fallback to the server.
+   */
+  private prepareSpeechMode(): void {
+    const speechMode = this.getSpeechMode()
+
+    if (speechMode === "browser" && !this.browserSpeech.isAvailable()) {
+      throw new Error("Browser speech is not supported")
+    }
+
+    if (speechMode === "server") {
+      this.speechProviderForTurn = "server"
+      return
+    }
+
+    if (speechMode === "browser") {
+      this.speechProviderForTurn = "browser"
+      return
+    }
+
+    this.speechProviderForTurn = this.browserSpeech.isAvailable()
+      ? "browser"
+      : "server"
+  }
+
+  /**
+   * Prepare a playback task for one text segment.
+   *
+   * The queue calls this eagerly so server synthesis can overlap with the
+   * currently playing segment, but the returned task is still executed in the
+   * original enqueue order.
+   */
+  private async prepareSpeechSegment(
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<SpeechPlaybackTask> {
+    switch (this.getSpeechMode()) {
+      case "server":
+        return this.prepareServerSpeechTask(text, signal)
+      case "browser":
+        return this.prepareBrowserSpeechTask(text, signal)
+      default:
+        return this.prepareAutoSpeechTask(text, signal)
+    }
+  }
+
+  /**
+   * Synthesize server audio immediately and return a playback task that reuses
+   * the prepared blob later.
+   */
+  private async prepareServerSpeechTask(
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<SpeechPlaybackTask> {
+    const blob = await this.synthesizeSpeech(text, signal)
+
+    return () => this.audioPlayback.play(blob, signal)
+  }
+
+  /**
+   * Return a browser playback task for one text segment.
+   */
+  private async prepareBrowserSpeechTask(
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<SpeechPlaybackTask> {
+    return () => this.browserSpeech.speak(text, signal)
+  }
+
+  /**
+   * Prepare a playback task for `auto` mode.
+   *
+   * We prefer the browser for low latency, but if browser speech fails for any
+   * segment we permanently switch the remainder of the turn to server TTS so
+   * later segments do not keep retrying the failing browser path.
+   */
+  private async prepareAutoSpeechTask(
+    text: string,
+    signal?: AbortSignal,
+  ): Promise<SpeechPlaybackTask> {
+    if (this.getAutoSpeechProvider() === "server") {
+      return this.prepareServerSpeechTask(text, signal)
+    }
+
+    return async () => {
+      // Another segment may already have forced a fallback before this one
+      // reaches playback, so re-check the cached provider decision here.
+      if (this.getAutoSpeechProvider() === "server") {
+        const fallbackPlayback = await this.prepareServerSpeechTask(
+          text,
+          signal,
+        )
+        await fallbackPlayback()
+        return
+      }
+
+      try {
+        await this.browserSpeech.speak(text, signal)
+      } catch (error) {
+        if (signal?.aborted) return
+
+        // Browser speech failed mid-turn. Flip future segments to the server
+        // and replay the current segment there so the turn still completes.
+        this.speechProviderForTurn = "server"
+        const fallbackPlayback = await this.prepareServerSpeechTask(
+          text,
+          signal,
+        )
+        await fallbackPlayback()
+      }
+    }
+  }
+
+  /**
+   * Read the current provider choice for `auto` mode, lazily defaulting to the
+   * browser when supported and the server otherwise.
+   */
+  private getAutoSpeechProvider(): "browser" | "server" {
+    if (this.speechProviderForTurn) {
+      return this.speechProviderForTurn
+    }
+
+    this.speechProviderForTurn = this.browserSpeech.isAvailable()
+      ? "browser"
+      : "server"
+
+    return this.speechProviderForTurn
   }
 
   private handleError(err: Error): void {
+    this.liveTranscript = ""
     this.error = err
     this.stateMachine.transition({ type: "ERROR", error: err })
     this.options.onError?.(err)
+    this.notify()
+  }
+
+  /**
+   * Resolve the effective transcription mode for the current client.
+   */
+  private getTranscriptionMode(): CursorBuddyMediaMode {
+    return this.options.transcription?.mode ?? "auto"
+  }
+
+  /**
+   * Resolve the effective speech mode for the current client.
+   */
+  private getSpeechMode(): CursorBuddyMediaMode {
+    return this.options.speech?.mode ?? "server"
+  }
+
+  /**
+   * Decide whether speech should start before the full chat response is ready.
+   */
+  private isSpeechStreamingEnabled(): boolean {
+    return this.options.speech?.allowStreaming ?? false
+  }
+
+  /**
+   * Decide whether this turn should attempt browser speech recognition.
+   */
+  private shouldAttemptBrowserTranscription(): boolean {
+    return this.getTranscriptionMode() !== "server"
+  }
+
+  /**
+   * Decide whether browser speech recognition is mandatory for this turn.
+   */
+  private isBrowserTranscriptionRequired(): boolean {
+    return this.getTranscriptionMode() === "browser"
+  }
+
+  /**
+   * Start the recorder and browser speech recognition together.
+   *
+   * The recorder always runs so we keep waveform updates and preserve a raw
+   * audio backup for server fallback in `auto` mode.
+   */
+  private async beginListeningSession(signal: AbortSignal): Promise<void> {
+    const shouldAttemptBrowser = this.shouldAttemptBrowserTranscription()
+    const isBrowserTranscriptionAvailable =
+      shouldAttemptBrowser && this.liveTranscription.isAvailable()
+
+    if (shouldAttemptBrowser && !isBrowserTranscriptionAvailable) {
+      if (this.isBrowserTranscriptionRequired()) {
+        throw new Error("Browser transcription is not supported")
+      }
+    }
+
+    const [voiceCaptureResult, browserTranscriptionResult] =
+      await Promise.allSettled([
+        this.voiceCapture.start(),
+        isBrowserTranscriptionAvailable
+          ? this.liveTranscription.start()
+          : Promise.resolve(undefined),
+      ])
+
+    if (signal.aborted) return
+
+    if (voiceCaptureResult.status === "rejected") {
+      throw toError(voiceCaptureResult.reason, "Failed to start microphone")
+    }
+
+    // In browser-only mode, a browser STT startup failure should fail the turn.
+    // In auto mode we silently keep the recorder alive for server fallback.
+    if (
+      browserTranscriptionResult.status === "rejected" &&
+      this.isBrowserTranscriptionRequired()
+    ) {
+      throw toError(
+        browserTranscriptionResult.reason,
+        "Browser transcription failed to start",
+      )
+    }
+
+    if (browserTranscriptionResult.status === "rejected") {
+      this.liveTranscription.dispose()
+    }
+  }
+
+  /**
+   * Stop browser speech recognition and return the best final transcript it
+   * produced for this turn.
+   */
+  private async stopLiveTranscription(): Promise<string> {
+    if (
+      !this.shouldAttemptBrowserTranscription() ||
+      !this.liveTranscription.isAvailable()
+    ) {
+      return ""
+    }
+
+    try {
+      return await this.liveTranscription.stop()
+    } catch (error) {
+      // Browser mode should surface the recognition error directly.
+      // Auto mode falls back to the recorded audio instead.
+      if (this.isBrowserTranscriptionRequired()) {
+        throw toError(error, "Browser transcription failed")
+      }
+
+      return ""
+    }
+  }
+
+  /**
+   * Choose the transcript that should drive the turn.
+   *
+   * Decision tree:
+   * 1. Use the browser transcript when it is available.
+   * 2. In browser-only mode, fail if the browser produced nothing usable.
+   * 3. In auto/server modes, fall back to the recorded audio upload.
+   */
+  private async resolveTranscript(
+    browserTranscript: string,
+    audioBlob: Blob,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const normalizedBrowserTranscript = browserTranscript.trim()
+    if (normalizedBrowserTranscript) {
+      return normalizedBrowserTranscript
+    }
+
+    if (this.getTranscriptionMode() === "browser") {
+      throw new Error(
+        "Browser transcription did not produce a final transcript",
+      )
+    }
+
+    return this.transcribe(audioBlob, signal)
+  }
+
+  private updateResponse(text: string): void {
+    if (this.response === text) return
+
+    this.response = text
     this.notify()
   }
 

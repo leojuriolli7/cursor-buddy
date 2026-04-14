@@ -3,7 +3,11 @@
 import { createContext, useContext, useEffect, useState } from "react"
 import { $cursorPosition } from "../core/atoms"
 import { CursorBuddyClient } from "../core/client"
-import type { CursorBuddyClientOptions } from "../core/types"
+import type {
+  CursorBuddyClientOptions,
+  CursorBuddySpeechConfig,
+  CursorBuddyTranscriptionConfig,
+} from "../core/types"
 import { injectStyles } from "./utils/inject-styles"
 
 const CursorBuddyContext = createContext<CursorBuddyClient | null>(null)
@@ -11,6 +15,10 @@ const CursorBuddyContext = createContext<CursorBuddyClient | null>(null)
 export interface CursorBuddyProviderProps extends CursorBuddyClientOptions {
   /** API endpoint for cursor buddy server */
   endpoint: string
+  /** Transcription configuration */
+  transcription?: CursorBuddyTranscriptionConfig
+  /** Speech configuration */
+  speech?: CursorBuddySpeechConfig
   /** Children */
   children: React.ReactNode
 }
@@ -20,6 +28,8 @@ export interface CursorBuddyProviderProps extends CursorBuddyClientOptions {
  */
 export function CursorBuddyProvider({
   endpoint,
+  transcription,
+  speech,
   children,
   onTranscript,
   onResponse,
@@ -35,6 +45,8 @@ export function CursorBuddyProvider({
         onPoint,
         onStateChange,
         onError,
+        speech,
+        transcription,
       }),
   )
 

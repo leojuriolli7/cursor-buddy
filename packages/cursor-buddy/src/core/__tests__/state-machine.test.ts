@@ -24,14 +24,12 @@ describe("createStateMachine", () => {
     expect(machine.getState()).toBe("processing")
   })
 
-  it("transitions from processing to responding on AI_RESPONSE_COMPLETE", () => {
+  it("transitions from processing to responding on RESPONSE_STARTED", () => {
     const machine = createStateMachine()
     machine.transition({ type: "HOTKEY_PRESSED" })
     machine.transition({ type: "HOTKEY_RELEASED" })
-    const result = machine.transition({
-      type: "AI_RESPONSE_COMPLETE",
-      response: "test",
-    })
+
+    const result = machine.transition({ type: "RESPONSE_STARTED" })
 
     expect(result).toBe(true)
     expect(machine.getState()).toBe("responding")
@@ -41,7 +39,7 @@ describe("createStateMachine", () => {
     const machine = createStateMachine()
     machine.transition({ type: "HOTKEY_PRESSED" })
     machine.transition({ type: "HOTKEY_RELEASED" })
-    machine.transition({ type: "AI_RESPONSE_COMPLETE", response: "test" })
+    machine.transition({ type: "RESPONSE_STARTED" })
     const result = machine.transition({ type: "TTS_COMPLETE" })
 
     expect(result).toBe(true)
@@ -64,7 +62,7 @@ describe("createStateMachine", () => {
     const machine = createStateMachine()
     machine.transition({ type: "HOTKEY_PRESSED" })
     machine.transition({ type: "HOTKEY_RELEASED" })
-    machine.transition({ type: "AI_RESPONSE_COMPLETE", response: "test" })
+    machine.transition({ type: "RESPONSE_STARTED" })
     expect(machine.getState()).toBe("responding")
 
     const result = machine.transition({ type: "HOTKEY_PRESSED" })

@@ -18,7 +18,7 @@ import type { CursorBuddyHandler, CursorBuddyHandlerConfig } from "./types"
  *
  * const cursorBuddy = createCursorBuddyHandler({
  *   model: openai("gpt-4o"),
- *   speechModel: openai.speech("tts-1"),
+ *   speechModel: openai.speech("tts-1"), // optional for browser-only speech
  *   transcriptionModel: openai.transcription("whisper-1"),
  * })
  * ```

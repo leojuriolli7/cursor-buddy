@@ -2,6 +2,9 @@
 
 // Re-export render prop types for custom components
 export type {
+  CursorBuddyMediaMode,
+  CursorBuddySpeechConfig,
+  CursorBuddyTranscriptionConfig,
   CursorRenderProps,
   SpeechBubbleRenderProps,
   WaveformRenderProps,

@@ -155,6 +155,10 @@ export class VoiceCaptureService implements VoiceCapturePort {
 
   /**
    * Clean up all resources.
+   *
+   * The level callback is intentionally preserved so the same service instance
+   * can be reused across multiple push-to-talk turns without re-registering
+   * the waveform subscription from the client.
    */
   dispose(): void {
     if (this.stream) {
@@ -179,8 +183,8 @@ export class VoiceCaptureService implements VoiceCapturePort {
     }
     this.chunks = []
     this.visualLevel = 0
+    this.levelCallback?.(0)
     this.flushResolve = null
-    this.levelCallback = null
   }
 
   private async flushPendingAudio(): Promise<void> {

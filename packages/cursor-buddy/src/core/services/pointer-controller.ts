@@ -6,7 +6,7 @@ import {
   $pointingTarget,
 } from "../atoms"
 import { animateBezierFlight } from "../bezier"
-import type { PointingTarget, PointerControllerPort } from "../types"
+import type { PointerControllerPort, PointingTarget } from "../types"
 
 const POINTING_LOCK_TIMEOUT_MS = 10_000
 

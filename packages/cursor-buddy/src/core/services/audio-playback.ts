@@ -1,4 +1,5 @@
 import type { AudioPlaybackPort } from "../types"
+import { toError } from "../utils/error"
 
 /**
  * Framework-agnostic service for audio playback with abort support.
@@ -88,7 +89,7 @@ export class AudioPlaybackService implements AudioPlaybackPort {
       }
 
       this.audio.play().catch((err) => {
-        settle("reject", err instanceof Error ? err : new Error(String(err)))
+        settle("reject", toError(err, "Audio playback failed"))
       })
     })
   }

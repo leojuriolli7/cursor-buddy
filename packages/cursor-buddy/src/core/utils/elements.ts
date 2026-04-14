@@ -85,7 +85,6 @@ function isElementVisible(
   element: Element,
   rect: DOMRect = element.getBoundingClientRect(),
 ): boolean {
-
   // Has size
   if (rect.width <= 0 || rect.height <= 0) return false
 

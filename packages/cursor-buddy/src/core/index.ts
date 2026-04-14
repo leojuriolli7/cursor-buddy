@@ -5,10 +5,15 @@ export { CursorBuddyClient } from "./client"
 
 // Types
 export type {
+  BrowserSpeechPort,
   ConversationMessage,
   CursorBuddyClientOptions,
+  CursorBuddyMediaMode,
   CursorBuddySnapshot,
+  CursorBuddySpeechConfig,
+  CursorBuddyTranscriptionConfig,
   CursorRenderProps,
+  LiveTranscriptionPort,
   Point,
   PointingTarget,
   ScreenshotResult,
