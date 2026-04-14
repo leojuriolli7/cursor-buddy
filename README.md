@@ -198,7 +198,7 @@ import { CursorBuddy, type CursorRenderProps } from "cursor-buddy/react"
 function MyCursor({ state, rotation, scale }: CursorRenderProps) {
   return (
     <div style={{ transform: `rotate(${rotation}rad) scale(${scale})` }}>
-      {state === "listening" ? "🎤" : "👆"}
+      {state === "listening" ? "Listening..." : "Point"}
     </div>
   )
 }
@@ -372,6 +372,39 @@ interface WaveformRenderProps {
    based on `speech.allowStreaming`
 9. If a marker tag is present, it is resolved back to the live DOM element; if a coordinate tag is present, it is mapped back to the live viewport; then the cursor animates to the target location
 10. **If user presses hotkey again at any point, current response is interrupted**
+
+## Security Best Practices
+
+Since the cursor-buddy endpoints allow direct LLM communication, it is strongly recommended to configure CORS and rate limiting to prevent abuse, unauthorized access, and unexpected API costs.
+
+Wrap the handler with CORS and rate limiting:
+
+```ts
+// app/api/cursor-buddy/[...path]/route.ts
+import { toNextJsHandler } from "cursor-buddy/server/next"
+import { cursorBuddy } from "@/lib/cursor-buddy"
+
+const handler = toNextJsHandler(cursorBuddy)
+
+export async function POST(request: Request) {
+  // Verify origin
+  const origin = request.headers.get("origin")
+  if (origin !== process.env.ALLOWED_ORIGIN) {
+    return new Response("Unauthorized", { status: 403 })
+  }
+
+  // Check rate limit (e.g., 10 requests per minute)
+  const ip = request.headers.get("x-forwarded-for") || "unknown"
+  const { success } = await rateLimiter.limit(ip)
+  if (!success) {
+    return new Response("Rate limit exceeded", { status: 429 })
+  }
+
+  return handler(request)
+}
+
+export const GET = POST
+```
 
 ## TODOs
 
