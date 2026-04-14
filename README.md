@@ -1,6 +1,8 @@
 # cursor-buddy
 
-AI-powered cursor companion for web apps. Push-to-talk voice assistant that can see your screen and point at things.
+AI Agent that lives in your cursor, built for web apps. Push-to-talk voice assistant that can see your screen and point at things.
+
+Customize its prompt, pass custom tools, choose between browser or server-side speech APIs, use any AI SDK models and customize the UI to fit your needs.
 
 ## Features
 
@@ -10,8 +12,9 @@ AI-powered cursor companion for web apps. Push-to-talk voice assistant that can 
 - **Voice responses** — Browser or server TTS, with optional streaming playback
 - **Cursor pointing** — AI can point at UI elements it references
 - **Voice interruption** — Start talking again to cut off current response
-- **Framework agnostic** — Core client works without React, adapter-based architecture
+- **Framework agnostic** — Core client written in Typescript, adapter-based architecture
 - **Customizable** — CSS variables, custom components, headless mode
+- **Configurable** — Choose any AI SDK models, equip the agent with tools, or modify the system prompt
 
 ## Installation
 
@@ -262,6 +265,27 @@ function MyCustomUI() {
 }
 ```
 
+Complete Render Props types:
+
+```ts
+interface CursorRenderProps {
+  state: "idle" | "listening" | "processing" | "responding"
+  isPointing: boolean
+  rotation: number   // Radians, direction of travel
+  scale: number      // 1.0 normal, up to 1.3 during flight
+}
+
+interface SpeechBubbleRenderProps {
+  text: string
+  isVisible: boolean
+}
+
+interface WaveformRenderProps {
+  audioLevel: number  // 0-1
+  isListening: boolean
+}
+```
+
 ## Framework-Agnostic Usage
 
 For non-React environments, use the core client directly:
@@ -288,27 +312,6 @@ client.subscribe(() => {
 client.startListening()
 // ... user speaks ...
 client.stopListening()
-```
-
-## Render Props Types
-
-```ts
-interface CursorRenderProps {
-  state: "idle" | "listening" | "processing" | "responding"
-  isPointing: boolean
-  rotation: number   // Radians, direction of travel
-  scale: number      // 1.0 normal, up to 1.3 during flight
-}
-
-interface SpeechBubbleRenderProps {
-  text: string
-  isVisible: boolean
-}
-
-interface WaveformRenderProps {
-  audioLevel: number  // 0-1
-  isListening: boolean
-}
 ```
 
 ## API Reference
@@ -358,10 +361,10 @@ interface WaveformRenderProps {
 
 ## How It Works
 
-1. User holds the hotkey (Ctrl+Alt)
+1. User holds the hotkey
 2. Microphone captures audio, waveform shows audio level, and browser speech recognition starts when available
 3. User releases hotkey
-4. An annotated screenshot of the viewport is captured, with numbered markers on visible interactive elements
+4. An annotated screenshot of the viewport is captured, with numbered markers on visible interactive elements, based on [agent-browser](https://github.com/vercel-labs/agent-browser) implementation.
 5. The client prefers the browser transcript; if it is unavailable or empty in `auto` mode, the recorded audio is transcribed on the server
 6. Screenshot + marker context are sent to the AI model
 7. AI responds with text, optionally including a pointing tag:

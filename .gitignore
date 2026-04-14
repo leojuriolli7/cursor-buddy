@@ -3,3 +3,4 @@ dist/
 
 # opensrc - source code for packages
 opensrc/
+apps/.DS_Store
