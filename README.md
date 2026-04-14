@@ -335,7 +335,7 @@ interface WaveformRenderProps {
 
 ## TODOs
 
-- [ ] Highest: Faster transcription -> chat -> TTS flow (starting with single server endpoint instead of 3 separate client calls + faster models) + chunked streamed TTS.
+- [ ] Highest: Faster transcription -> chat -> TTS flow (starting with single server endpoint instead of 3 separate client calls + faster models) + realtime transcription as user speaks + chunked streamed TTS
 - [ ] High: Make tool calls first class: Pointing becomes tool call (once per turn) + re-use pointing bubble UI for tool calls
 - [ ] Medium: Proper test structure without relying on `as any` for audio and voice capture
 - [ ] Medium: Better hotkey registering code

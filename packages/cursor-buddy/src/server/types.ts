@@ -6,6 +6,7 @@ import type { LanguageModel, SpeechModel, Tool, TranscriptionModel } from "ai"
 export interface CursorBuddyHandlerConfig {
   /** AI SDK language model for chat (e.g., openai("gpt-4o")) */
   model: LanguageModel
+  modelProviderMetadata?: Record<string, any>
 
   /** AI SDK speech model for TTS (e.g., openai.speech("tts-1")) */
   speechModel: SpeechModel

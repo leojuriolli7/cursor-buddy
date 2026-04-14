@@ -70,6 +70,7 @@ export async function handleChat(
   const result = streamText({
     model: config.model,
     system: systemPrompt,
+    providerOptions: config?.modelProviderMetadata,
     messages,
     tools: config.tools,
   })
