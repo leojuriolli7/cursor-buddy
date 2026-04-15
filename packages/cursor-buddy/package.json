@@ -36,7 +36,8 @@
     "release:major": "npm version major"
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "publishConfig": {
     "access": "public"
