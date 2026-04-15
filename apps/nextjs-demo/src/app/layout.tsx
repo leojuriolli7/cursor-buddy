@@ -1,8 +1,9 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
-import { Toaster } from "sonner"
-import "./globals.css"
 import { Providers } from "./providers"
+import "./globals.css"
+import "katex/dist/katex.min.css"
+import "prismjs/themes/prism-dark.css"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Cursor Buddy Demo",
+  title: "CodeLearn | Cursor Buddy Demo",
   description: "AI-powered cursor companion demo",
 }
 

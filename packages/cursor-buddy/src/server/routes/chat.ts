@@ -1,4 +1,5 @@
 import { streamText } from "ai"
+import { pointTool } from "../../shared/point-tool"
 import { DEFAULT_SYSTEM_PROMPT } from "../system-prompt"
 import type { ChatRequestBody, CursorBuddyHandlerConfig } from "../types"
 
@@ -72,8 +73,54 @@ export async function handleChat(
     system: systemPrompt,
     providerOptions: config?.modelProviderMetadata,
     messages,
-    tools: config.tools,
+    tools: {
+      point: pointTool,
+      ...config.tools,
+    },
+    experimental_repairToolCall: async ({ toolCall }) => {
+      if (toolCall.toolName !== "point") return null
+
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(toolCall.input)
+      } catch {
+        return null
+      }
+
+      if (!parsed || typeof parsed !== "object") return null
+
+      const input = parsed as Record<string, unknown>
+
+      if (input.type === "marker") {
+        const repaired = {
+          type: "marker",
+          markerId: input.markerId,
+          label: input.label,
+        }
+
+        return {
+          ...toolCall,
+          input: JSON.stringify(repaired),
+        }
+      }
+
+      if (input.type === "coordinates") {
+        const repaired = {
+          type: "coordinates",
+          x: input.x,
+          y: input.y,
+          label: input.label,
+        }
+
+        return {
+          ...toolCall,
+          input: JSON.stringify(repaired),
+        }
+      }
+
+      return null
+    },
   })
 
-  return result.toTextStreamResponse()
+  return result.toUIMessageStreamResponse()
 }

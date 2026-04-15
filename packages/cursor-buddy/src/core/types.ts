@@ -14,10 +14,7 @@ export type VoiceEvent =
   | { type: "ERROR"; error: Error }
 
 /**
- * Point coordinates parsed from AI response.
- * Supports two formats:
- * - Marker-based: [POINT:5:label] - references a numbered marker
- * - Coordinate-based: [POINT:640,360:label] - raw pixel coordinates
+ * Point coordinates for cursor pointing.
  */
 export interface PointingTarget {
   /** X coordinate in viewport pixels (top-left origin) */
@@ -27,13 +24,6 @@ export interface PointingTarget {
   /** Label to display in speech bubble */
   label: string
 }
-
-/**
- * Parsed pointing tag result - either marker ID or coordinates.
- */
-export type ParsedPointingTag =
-  | { type: "marker"; markerId: number; label: string }
-  | { type: "coordinates"; x: number; y: number; label: string }
 
 /**
  * 2D point

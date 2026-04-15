@@ -57,7 +57,7 @@ export const cursorBuddy = createCursorBuddyHandler({
 import { toNextJsHandler } from "cursor-buddy/server/next"
 import { cursorBuddy } from "@/lib/cursor-buddy"
 
-export const { GET, POST } = toNextJsHandler(cursorBuddy)
+export const { POST } = toNextJsHandler(cursorBuddy)
 ```
 
 ### 2. Client Setup
@@ -371,13 +371,13 @@ client.stopListening()
 4. An annotated screenshot of the viewport is captured, with numbered markers on visible interactive elements, based on [agent-browser](https://github.com/vercel-labs/agent-browser) implementation.
 5. The client prefers the browser transcript; if it is unavailable or empty in `auto` mode, the recorded audio is transcribed on the server
 6. Screenshot + marker context are sent to the AI model
-7. AI responds with text, optionally including a pointing tag:
-   - Preferred: `[POINT:5:Submit]` for numbered interactive elements
-   - Fallback: `[POINT:640,360:Error text]` for arbitrary screen coordinates
+7. AI responds with text and can optionally call the `point` tool to indicate a location on screen:
+   - `type: "marker"` with `markerId` for numbered interactive elements (most accurate)
+   - `type: "coordinates"` with `x, y` pixel coordinates for anything without a marker
 8. Response is spoken in the browser or on the server based on `speech.mode`,
    and can either wait for the full response or stream sentence-by-sentence
    based on `speech.allowStreaming`
-9. If a marker tag is present, it is resolved back to the live DOM element; if a coordinate tag is present, it is mapped back to the live viewport; then the cursor animates to the target location
+9. If the AI calls the point tool, the cursor animates to the target location — markers resolve to live DOM elements, coordinates map to viewport positions
 10. **If user presses hotkey again at any point, current response is interrupted**
 
 ## Security Best Practices
@@ -415,7 +415,6 @@ export const GET = POST
 
 ## TODOs
 
-- [ ] High: Make tool calls first class: Pointing becomes tool call (once per turn) + re-use pointing bubble UI for tool calls
 - [ ] Medium: Proper test structure without relying on `as any` for audio and voice capture
 
 ## License

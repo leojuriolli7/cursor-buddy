@@ -7,7 +7,7 @@ import {
   createDeferred,
   createJsonResponse,
   createMockServices,
-  createStreamResponse,
+  createUIStreamResponse,
   defaultAnnotatedScreenshot,
 } from "./test-utils"
 
@@ -69,6 +69,16 @@ function createControlledStreamResponse(
       }),
     },
   }
+}
+
+/**
+ * Helper to create a text-delta chunk for controlled stream tests
+ */
+function textDeltaChunk(text: string): Uint8Array {
+  const encoder = new TextEncoder()
+  return encoder.encode(
+    JSON.stringify({ type: "text-delta", delta: text, id: "text-1" }) + "\n",
+  )
 }
 
 describe("CursorBuddyClient", () => {
@@ -154,7 +164,7 @@ describe("CursorBuddyClient", () => {
         .mockResolvedValueOnce(
           createJsonResponse({ text: "Open the save menu" }),
         )
-        .mockResolvedValueOnce(createStreamResponse(["Click Save"]))
+        .mockResolvedValueOnce(createUIStreamResponse(["Click Save"]))
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
         )
@@ -238,7 +248,7 @@ describe("CursorBuddyClient", () => {
 
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ text: "hello" }))
-        .mockResolvedValueOnce(createStreamResponse(["Hi there"]))
+        .mockResolvedValueOnce(createUIStreamResponse(["Hi there"]))
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
         )
@@ -311,7 +321,10 @@ describe("CursorBuddyClient", () => {
           createJsonResponse({ text: "Open the save menu" }),
         )
         .mockResolvedValueOnce(
-          createStreamResponse(["Click Save ", "[POINT:640,360:Save button]"]),
+          createUIStreamResponse(["Click Save "], {
+            toolName: "point",
+            args: { type: "coordinates", x: 640, y: 360, label: "Save button" },
+          }),
         )
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
@@ -385,7 +398,7 @@ describe("CursorBuddyClient", () => {
       vi.stubGlobal("fetch", fetchMock)
 
       fetchMock
-        .mockResolvedValueOnce(createStreamResponse(["Click Save"]))
+        .mockResolvedValueOnce(createUIStreamResponse(["Click Save"]))
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
         )
@@ -476,12 +489,12 @@ describe("CursorBuddyClient", () => {
 
       chatReads[0]?.resolve({
         done: false,
-        value: encoder.encode("The first response sentence is long enough. "),
+        value: textDeltaChunk("The first response sentence is long enough. "),
       })
 
       await vi.waitFor(() => {
         expect(client.getSnapshot().response).toBe(
-          "The first response sentence is long enough.",
+          "The first response sentence is long enough. ",
         )
       })
 
@@ -491,7 +504,7 @@ describe("CursorBuddyClient", () => {
 
       chatReads[1]?.resolve({
         done: false,
-        value: encoder.encode("The second response sentence arrives later."),
+        value: textDeltaChunk("The second response sentence arrives later."),
       })
       chatReads[2]?.resolve({ done: true, value: undefined })
 
@@ -547,7 +560,7 @@ describe("CursorBuddyClient", () => {
 
       chatReads[0]?.resolve({
         done: false,
-        value: encoder.encode("The first response sentence is long enough. "),
+        value: textDeltaChunk("The first response sentence is long enough. "),
       })
 
       await vi.waitFor(() => {
@@ -560,7 +573,7 @@ describe("CursorBuddyClient", () => {
 
       chatReads[1]?.resolve({
         done: false,
-        value: encoder.encode("The second response sentence arrives later."),
+        value: textDeltaChunk("The second response sentence arrives later."),
       })
       chatReads[2]?.resolve({ done: true, value: undefined })
 
@@ -594,7 +607,7 @@ describe("CursorBuddyClient", () => {
         }
 
         if (input === "/api/chat") {
-          return Promise.resolve(createStreamResponse(["Click Save"]))
+          return Promise.resolve(createUIStreamResponse(["Click Save"]))
         }
 
         throw new Error(`Unexpected fetch: ${input}`)
@@ -645,7 +658,7 @@ describe("CursorBuddyClient", () => {
 
       chatReads[0]?.resolve({
         done: false,
-        value: encoder.encode("The first response sentence is long enough. "),
+        value: textDeltaChunk("The first response sentence is long enough. "),
       })
 
       await vi.waitFor(() => {
@@ -659,7 +672,7 @@ describe("CursorBuddyClient", () => {
 
       chatReads[1]?.resolve({
         done: false,
-        value: encoder.encode("The second response sentence arrives later."),
+        value: textDeltaChunk("The second response sentence arrives later."),
       })
       chatReads[2]?.resolve({ done: true, value: undefined })
 
@@ -691,7 +704,7 @@ describe("CursorBuddyClient", () => {
         }
 
         if (input === "/api/chat") {
-          return Promise.resolve(createStreamResponse(["Click Save"]))
+          return Promise.resolve(createUIStreamResponse(["Click Save"]))
         }
 
         if (input === "/api/tts") {
@@ -819,7 +832,7 @@ describe("CursorBuddyClient", () => {
 
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ text: "hello" }))
-        .mockResolvedValueOnce(createStreamResponse(["   "]))
+        .mockResolvedValueOnce(createUIStreamResponse(["   "]))
 
       client.startListening()
       await client.stopListening()
@@ -871,7 +884,7 @@ describe("CursorBuddyClient", () => {
 
         if (input === "/api/chat") {
           return Promise.resolve(
-            createStreamResponse([
+            createUIStreamResponse([
               "The first response sentence is long enough. The second response sentence fails hard.",
             ]),
           )
@@ -957,7 +970,7 @@ describe("CursorBuddyClient", () => {
 
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ text: "hello" }))
-        .mockResolvedValueOnce(createStreamResponse(["Hi"]))
+        .mockResolvedValueOnce(createUIStreamResponse(["Hi"]))
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
         )
@@ -991,9 +1004,12 @@ describe("CursorBuddyClient", () => {
       fetchMock.mockResolvedValueOnce(
         createJsonResponse({ text: "What is this button?" }),
       )
-      // Chat streams partial response with pointing tag
+      // Chat streams partial response with point tool call
       fetchMock.mockResolvedValueOnce(
-        createStreamResponse(["This is the submit button [POINT:5:Submit]"]),
+        createUIStreamResponse(["This is the submit button "], {
+          toolName: "point",
+          args: { type: "marker", markerId: 5, label: "Submit" },
+        }),
       )
       // TTS hangs
       fetchMock.mockResolvedValueOnce({
@@ -1030,7 +1046,7 @@ describe("CursorBuddyClient", () => {
       // Complete turn
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ text: "First question" }))
-        .mockResolvedValueOnce(createStreamResponse(["First answer"]))
+        .mockResolvedValueOnce(createUIStreamResponse(["First answer"]))
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
         )
@@ -1128,7 +1144,7 @@ describe("CursorBuddyClient", () => {
       client.startListening()
       fetchMock
         .mockResolvedValueOnce(createJsonResponse({ text: "partial" }))
-        .mockResolvedValueOnce(createStreamResponse(["partial response"]))
+        .mockResolvedValueOnce(createUIStreamResponse(["partial response"]))
         .mockResolvedValueOnce(
           createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
         )

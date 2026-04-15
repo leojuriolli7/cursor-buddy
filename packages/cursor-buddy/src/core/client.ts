@@ -1,5 +1,5 @@
+import type { PointToolInput } from "../shared/point-tool"
 import { $audioLevel, $conversationHistory, $isEnabled } from "./atoms"
-import { parsePointingTagRaw } from "./pointing"
 import { AudioPlaybackService } from "./services/audio-playback"
 import { BrowserSpeechService } from "./services/browser-speech"
 import { LiveTranscriptionService } from "./services/live-transcription"
@@ -265,7 +265,7 @@ export class CursorBuddyClient {
       this.prepareSpeechMode()
 
       // Chat stream + progressive sentence TTS
-      const { cleanResponse, fullResponse, playbackQueue } =
+      const { cleanResponse, pointToolCall, playbackQueue } =
         await this.chatAndSpeak(transcript, screenshot, signal, {
           onFailure: failTurn,
           onPlaybackStart: () => {
@@ -276,32 +276,29 @@ export class CursorBuddyClient {
       if (turnFailure) throw turnFailure
       if (signal?.aborted) return
 
-      // Parse pointing tag and strip from response
-      const parsed = parsePointingTagRaw(fullResponse)
-
       this.options.onResponse?.(cleanResponse)
 
-      // Resolve pointing target (marker-based or coordinate-based)
+      // Resolve pointing target from tool call (marker-based or coordinate-based)
       let pointTarget: PointingTarget | null = null
 
-      if (parsed) {
-        if (parsed.type === "marker") {
+      if (pointToolCall) {
+        if (pointToolCall.type === "marker") {
           // Resolve marker ID to element coordinates
           const coords = resolveMarkerToCoordinates(
             screenshot.markerMap,
-            parsed.markerId,
+            pointToolCall.markerId!,
           )
           if (coords) {
-            pointTarget = { ...coords, label: parsed.label }
+            pointTarget = { ...coords, label: pointToolCall.label }
           }
         } else {
           // Map coordinates from screenshot space to viewport space
           const coords = mapCoordinatesToViewport(
-            parsed.x,
-            parsed.y,
+            pointToolCall.x!,
+            pointToolCall.y!,
             screenshot,
           )
-          pointTarget = { ...coords, label: parsed.label }
+          pointTarget = { ...coords, label: pointToolCall.label }
         }
       }
 
@@ -483,7 +480,7 @@ export class CursorBuddyClient {
     },
   ): Promise<{
     cleanResponse: string
-    fullResponse: string
+    pointToolCall: PointToolInput | null
     playbackQueue: TTSPlaybackQueue
   }> {
     const history = $conversationHistory.get()
@@ -568,7 +565,7 @@ export class CursorBuddyClient {
 
     return {
       cleanResponse: finalizedResponse.finalResponseText,
-      fullResponse: finalizedResponse.fullResponse,
+      pointToolCall: finalizedResponse.pointToolCall,
       playbackQueue,
     }
   }

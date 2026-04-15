@@ -28,7 +28,7 @@ const DEFAULT_STYLE: AnnotationStyle = {
   labelBackground: "rgba(255, 0, 0, 0.9)",
   labelColor: "#ffffff",
   borderWidth: 2,
-  fontSize: 11,
+  fontSize: 15,
   labelPadding: 4,
 }
 
@@ -68,7 +68,8 @@ export function drawAnnotations(
     const labelWidth = textWidth + s.labelPadding * 2
     const labelHeight = textHeight + s.labelPadding
     const labelX = rect.left - s.borderWidth
-    const labelY = rect.top < labelHeight + 4 ? rect.top + 2 : rect.top - labelHeight
+    const labelY =
+      rect.top < labelHeight + 4 ? rect.top + 2 : rect.top - labelHeight
 
     // Label background
     ctx.fillStyle = s.labelBackground

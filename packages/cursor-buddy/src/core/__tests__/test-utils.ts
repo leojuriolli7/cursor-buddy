@@ -61,6 +61,40 @@ export function createStreamResponse(chunks: string[], ok = true) {
   }
 }
 
+/**
+ * Create a mock response for AI SDK UI message stream format.
+ * The format is newline-delimited JSON with specific event types.
+ */
+export function createUIStreamResponse(
+  textChunks: string[],
+  toolCall?: { toolName: string; args: unknown },
+  ok = true,
+) {
+  const lines: string[] = []
+
+  // Add text-delta events
+  for (const text of textChunks) {
+    lines.push(JSON.stringify({ type: "text-delta", delta: text, id: "text-1" }))
+  }
+
+  // Add tool-input-available if provided
+  if (toolCall) {
+    lines.push(
+      JSON.stringify({
+        type: "tool-input-available",
+        toolCallId: "call_1",
+        toolName: toolCall.toolName,
+        input: toolCall.args,
+      }),
+    )
+  }
+
+  // Add finish event
+  lines.push(JSON.stringify({ type: "finish", finishReason: "stop" }))
+
+  return createStreamResponse([lines.join("\n")])
+}
+
 export function createDeferred<T>() {
   let resolve!: (value: T) => void
   let reject!: (reason?: unknown) => void

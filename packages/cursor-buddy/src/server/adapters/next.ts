@@ -9,14 +9,13 @@ import type { CursorBuddyHandler } from "../types"
  * import { toNextJsHandler } from "cursor-buddy/server/next"
  * import { cursorBuddy } from "@/lib/cursor-buddy"
  *
- * export const { GET, POST } = toNextJsHandler(cursorBuddy)
+ * export const { POST } = toNextJsHandler(cursorBuddy)
  * ```
  */
 export function toNextJsHandler(cursorBuddy: CursorBuddyHandler) {
   const handler = (request: Request) => cursorBuddy.handler(request)
 
   return {
-    GET: handler,
     POST: handler,
   }
 }

@@ -1,4 +1,5 @@
-import { stripPointingTag, stripTrailingPointingSyntax } from "../pointing"
+import type { PointToolInput } from "../../shared/point-tool"
+import { isPointToolCall, parseUIStreamLine } from "./ui-stream-parser"
 
 const COMMON_ABBREVIATIONS = [
   "mr.",
@@ -11,7 +12,7 @@ const COMMON_ABBREVIATIONS = [
   "e.g.",
   "i.e.",
 ]
-const CLOSING_PUNCTUATION = new Set(['"', "'", "”", "’", ")", "]", "}"])
+const CLOSING_PUNCTUATION = new Set(['"', "'", "\u201D", "\u2019", ")", "]", "}"])
 const SHORT_SEGMENT_THRESHOLD = 24
 
 function isLikelySentenceBoundary(text: string, index: number): boolean {
@@ -100,45 +101,86 @@ function extractCompletedSegments(text: string): {
 export interface ProcessedResponseChunk {
   speechSegments: string[]
   visibleText: string
+  pointToolCall: PointToolInput | null
 }
 
 export interface FinalProcessedResponse {
   finalResponseText: string
-  fullResponse: string
   speechSegments: string[]
+  pointToolCall: PointToolInput | null
 }
 
 /**
- * Tracks a streaming assistant response, exposes a tag-free visible version for
- * the UI, and emits speakable segments as sentence boundaries become stable.
+ * Processes a streaming AI SDK UI message stream response.
+ * Extracts text for display/TTS and captures point tool calls.
  */
 export class ProgressiveResponseProcessor {
-  private consumedVisibleTextLength = 0
+  private consumedTextLength = 0
   private pendingShortSegment = ""
-  private rawResponse = ""
+  private rawText = ""
+  private buffer = ""
+  private pointToolCall: PointToolInput | null = null
 
+  /**
+   * Push raw stream data and extract text chunks and tool calls.
+   * The UI message stream format is newline-delimited JSON.
+   */
   push(chunk: string): ProcessedResponseChunk {
-    this.rawResponse += chunk
+    this.buffer += chunk
+    const lines = this.buffer.split("\n")
 
-    const visibleText = stripTrailingPointingSyntax(this.rawResponse)
-    const unprocessedText = visibleText.slice(this.consumedVisibleTextLength)
-    const { consumedLength, segments } =
-      extractCompletedSegments(unprocessedText)
+    // Keep incomplete last line in buffer
+    this.buffer = lines.pop() ?? ""
 
-    this.consumedVisibleTextLength += consumedLength
+    const newTextParts: string[] = []
+
+    for (const line of lines) {
+      const parsed = parseUIStreamLine(line)
+      if (!parsed) continue
+
+      if (parsed.type === "text-delta") {
+        newTextParts.push(parsed.delta)
+      } else if (isPointToolCall(parsed)) {
+        // Capture first point tool call only
+        if (!this.pointToolCall) {
+          this.pointToolCall = parsed.input
+        }
+      }
+    }
+
+    // Accumulate new text
+    if (newTextParts.length > 0) {
+      this.rawText += newTextParts.join("")
+    }
+
+    // Extract completed sentences for TTS
+    const unprocessedText = this.rawText.slice(this.consumedTextLength)
+    const { consumedLength, segments } = extractCompletedSegments(unprocessedText)
+    this.consumedTextLength += consumedLength
 
     return {
-      visibleText,
+      visibleText: this.rawText,
       speechSegments: this.coalesceSegments(segments),
+      pointToolCall: this.pointToolCall,
     }
   }
 
+  /**
+   * Finalize processing and return any remaining text/tool call.
+   */
   finish(): FinalProcessedResponse {
-    const finalResponseText = stripPointingTag(this.rawResponse)
-    const trailingText = finalResponseText
-      .slice(this.consumedVisibleTextLength)
-      .trim()
+    // Process any remaining buffer
+    if (this.buffer) {
+      const parsed = parseUIStreamLine(this.buffer)
+      if (parsed?.type === "text-delta") {
+        this.rawText += parsed.delta
+      } else if (parsed && isPointToolCall(parsed) && !this.pointToolCall) {
+        this.pointToolCall = parsed.input
+      }
+      this.buffer = ""
+    }
 
+    const trailingText = this.rawText.slice(this.consumedTextLength).trim()
     const finalSegmentParts = [this.pendingShortSegment, trailingText].filter(
       Boolean,
     )
@@ -146,11 +188,11 @@ export class ProgressiveResponseProcessor {
     this.pendingShortSegment = ""
 
     return {
-      fullResponse: this.rawResponse,
-      finalResponseText,
+      finalResponseText: this.rawText.trim(),
       speechSegments: finalSegmentParts.length
         ? [finalSegmentParts.join(" ").trim()]
         : [],
+      pointToolCall: this.pointToolCall,
     }
   }
 
