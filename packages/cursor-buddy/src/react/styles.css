@@ -89,6 +89,11 @@
   fill: var(--cursor-buddy-color-responding);
 }
 
+/* Processing spinner */
+.cursor-buddy-cursor__spinner {
+  color: var(--cursor-buddy-color-processing);
+}
+
 /* Cursor pulse animation during listening */
 .cursor-buddy-cursor--listening {
   animation: cursor-buddy-pulse 1.5s ease-in-out infinite;
