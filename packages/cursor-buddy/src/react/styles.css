@@ -50,10 +50,15 @@
   z-index: var(--cursor-buddy-z-index);
 }
 
-/* Buddy container (cursor + accessories) */
+/* Buddy container (cursor + accessories)
+   Positioned at the $buddyPosition coordinates (cursor center).
+   CSS transform shifts the cursor to the right of the mouse pointer
+   to avoid overlapping with the system cursor.
+   Customize this offset via CSS to change cursor positioning.
+*/
 .cursor-buddy-container {
   position: absolute;
-  transform: translate(-16px, -4px);
+  transform: translate(8px, 4px);
 }
 
 /* Cursor SVG */
@@ -116,7 +121,7 @@
 /* Speech bubble */
 .cursor-buddy-bubble {
   position: absolute;
-  left: 40px;
+  left: 24px;
   top: -8px;
   pointer-events: auto;
   cursor: pointer;
@@ -150,8 +155,8 @@
 /* Waveform container */
 .cursor-buddy-waveform {
   position: absolute;
-  left: 40px;
-  top: 4px;
+  left: 24px;
+  top: 2px;
   display: flex;
   align-items: center;
   gap: var(--cursor-buddy-waveform-gap);

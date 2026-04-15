@@ -12,16 +12,16 @@ export function DefaultCursor({ state, rotation, scale }: CursorRenderProps) {
 
   return (
     <svg
-      width="32"
-      height="32"
-      viewBox="0 0 32 32"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
       className={`cursor-buddy-cursor ${stateClass}`}
       style={{
         transform: `rotate(${BASE_ROTATION + rotation}rad) scale(${scale})`,
-        transformOrigin: "16px 4px",
+        transformOrigin: "8px 2px",
       }}
     >
-      <polygon points="16,4 28,28 16,22 4,28" />
+      <polygon points="8,2 14,14 8,11 2,14" />
     </svg>
   )
 }
