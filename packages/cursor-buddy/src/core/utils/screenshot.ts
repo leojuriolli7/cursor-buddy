@@ -5,6 +5,85 @@ import { createMarkerMap } from "./elements"
 
 const CLONE_RESOURCE_TIMEOUT_MS = 3000
 
+/** Maximum width for compressed screenshots (maintains aspect ratio) */
+const MAX_SCREENSHOT_WIDTH = 1280
+
+/** JPEG quality for compressed screenshots (0-1) */
+const JPEG_QUALITY = 0.8
+
+/**
+ * Compression result with compressed image data and dimensions.
+ */
+interface CompressionResult {
+  /** Base64-encoded compressed image data */
+  imageData: string
+  /** Width of the compressed image */
+  width: number
+  /** Height of the compressed image */
+  height: number
+}
+
+/**
+ * Compress a canvas image by downscaling and converting to JPEG.
+ * Maintains aspect ratio and falls back to original if compression fails.
+ *
+ * @param sourceCanvas - The source canvas to compress
+ * @param maxWidth - Maximum width for the compressed image (default: MAX_SCREENSHOT_WIDTH)
+ * @param quality - JPEG quality 0-1 (default: JPEG_QUALITY)
+ * @returns Compression result with compressed image data and dimensions
+ */
+function compressImage(
+  sourceCanvas: HTMLCanvasElement,
+  maxWidth: number = MAX_SCREENSHOT_WIDTH,
+  quality: number = JPEG_QUALITY,
+): CompressionResult {
+  const sourceWidth = sourceCanvas.width
+  const sourceHeight = sourceCanvas.height
+
+  // If source is already smaller than max width, just convert to JPEG
+  if (sourceWidth <= maxWidth) {
+    return {
+      imageData: sourceCanvas.toDataURL("image/jpeg", quality),
+      width: sourceWidth,
+      height: sourceHeight,
+    }
+  }
+
+  // Calculate scaled dimensions maintaining aspect ratio
+  const scale = maxWidth / sourceWidth
+  const targetWidth = Math.round(maxWidth)
+  const targetHeight = Math.round(sourceHeight * scale)
+
+  // Create canvas for compressed image
+  const canvas = document.createElement("canvas")
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+
+  const ctx = canvas.getContext("2d")
+  if (!ctx) {
+    // Fallback: return original as JPEG
+    return {
+      imageData: sourceCanvas.toDataURL("image/jpeg", quality),
+      width: sourceWidth,
+      height: sourceHeight,
+    }
+  }
+
+  // Use better quality scaling
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = "high"
+
+  // Draw scaled image
+  ctx.drawImage(sourceCanvas, 0, 0, targetWidth, targetHeight)
+
+  // Export as JPEG
+  return {
+    imageData: canvas.toDataURL("image/jpeg", quality),
+    width: targetWidth,
+    height: targetHeight,
+  }
+}
+
 function getCaptureMetrics() {
   return {
     viewportWidth: window.innerWidth,
@@ -133,7 +212,7 @@ function createFallbackCanvas(): HTMLCanvasElement {
 
 /**
  * Capture a screenshot of the current viewport.
- * Uses html2canvas to render the DOM to a canvas, then exports as JPEG.
+ * Uses html2canvas to render the DOM to a canvas, then compresses to JPEG.
  * Falls back to a placeholder if capture fails (e.g., due to unsupported CSS).
  */
 export async function captureViewport(): Promise<ScreenshotResult> {
@@ -149,10 +228,23 @@ export async function captureViewport(): Promise<ScreenshotResult> {
     canvas = createFallbackCanvas()
   }
 
+  // Compress the screenshot (with fallback to uncompressed on error)
+  let compressed: CompressionResult
+  try {
+    compressed = compressImage(canvas)
+  } catch {
+    // Fallback: use uncompressed PNG
+    compressed = {
+      imageData: canvas.toDataURL("image/png"),
+      width: canvas.width,
+      height: canvas.height,
+    }
+  }
+
   return {
-    imageData: canvas.toDataURL("image/png"),
-    width: canvas.width,
-    height: canvas.height,
+    imageData: compressed.imageData,
+    width: compressed.width,
+    height: compressed.height,
     viewportWidth: captureMetrics.viewportWidth,
     viewportHeight: captureMetrics.viewportHeight,
   }
@@ -191,10 +283,23 @@ export async function captureAnnotatedViewport(): Promise<AnnotatedScreenshotRes
   // 4. Generate marker context for AI
   const markerContext = generateMarkerContext(markerMap)
 
+  // 5. Compress the screenshot (with fallback to uncompressed on error)
+  let compressed: CompressionResult
+  try {
+    compressed = compressImage(canvas)
+  } catch {
+    // Fallback: use uncompressed PNG
+    compressed = {
+      imageData: canvas.toDataURL("image/png"),
+      width: canvas.width,
+      height: canvas.height,
+    }
+  }
+
   return {
-    imageData: canvas.toDataURL("image/png"),
-    width: canvas.width,
-    height: canvas.height,
+    imageData: compressed.imageData,
+    width: compressed.width,
+    height: compressed.height,
     viewportWidth: captureMetrics.viewportWidth,
     viewportHeight: captureMetrics.viewportHeight,
     markerMap,
