@@ -118,6 +118,7 @@ export class CursorBuddyClient {
   private abortController: AbortController | null = null
   private historyCommittedForTurn = false
   private speechProviderForTurn: "browser" | "server" | null = null
+  private screenshotPromise: Promise<AnnotatedScreenshotResult> | null = null
 
   // Cached snapshot for useSyncExternalStore (must be referentially stable)
   private cachedSnapshot: CursorBuddySnapshot
@@ -192,6 +193,10 @@ export class CursorBuddyClient {
     this.abortController = new AbortController()
     const signal = this.abortController.signal
 
+    // 5. Screenshot is captured in parallel with voice input to reduce latency
+    this.screenshotPromise = this.screenCapture.captureAnnotated()
+
+    // 6. Start mic (async, errors go to error state)
     this.beginListeningSession(signal).catch((error) => {
       if (signal.aborted) return
 
@@ -221,12 +226,24 @@ export class CursorBuddyClient {
     }
 
     try {
-      // Stop mic/browser transcription and capture annotated screenshot in parallel
-      const [audioBlob, screenshot, browserTranscript] = await Promise.all([
+      const [audioBlob, browserTranscript] = await Promise.all([
         this.voiceCapture.stop(),
-        this.screenCapture.captureAnnotated(),
         this.stopLiveTranscription(),
       ])
+
+      let screenshot: AnnotatedScreenshotResult
+      try {
+        if (!this.screenshotPromise) {
+          throw new Error("Screenshot was not started")
+        }
+        screenshot = await this.screenshotPromise
+      } catch (screenshotError) {
+        const errorMessage =
+          screenshotError instanceof Error
+            ? `Failed to capture screenshot: ${screenshotError.message}`
+            : "Failed to capture screenshot"
+        throw new Error(errorMessage)
+      }
 
       if (turnFailure) throw turnFailure
       if (signal?.aborted) return
@@ -405,6 +422,7 @@ export class CursorBuddyClient {
 
     this.abortController?.abort()
     this.abortController = null
+    this.screenshotPromise = null
     this.voiceCapture.dispose()
     this.liveTranscription.dispose()
     this.audioPlayback.stop()

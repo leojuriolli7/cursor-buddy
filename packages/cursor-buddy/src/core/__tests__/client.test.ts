@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { $audioLevel, $conversationHistory, $isEnabled } from "../atoms"
 import { CursorBuddyClient } from "../client"
+import type { AnnotatedScreenshotResult } from "../types"
 import {
   createBlobResponse,
   createDeferred,
@@ -117,6 +118,19 @@ describe("CursorBuddyClient", () => {
       expect(client.getSnapshot().state).toBe("listening")
     })
 
+    it("starts screenshot capture immediately on hotkey press", () => {
+      const { services, screenCapture } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+
+      // Screenshot should NOT be called before startListening
+      expect(screenCapture.captureAnnotated).not.toHaveBeenCalled()
+
+      client.startListening()
+
+      // Screenshot SHOULD be called immediately on hotkey press
+      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+    })
+
     it("updates the live transcript while browser transcription is listening", () => {
       const { services, emitLiveTranscript } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
@@ -211,7 +225,70 @@ describe("CursorBuddyClient", () => {
       await client.stopListening()
 
       expect(voiceCapture.stop).not.toHaveBeenCalled()
+      // Screenshot is NOT called on stopListening (it's started on startListening)
       expect(screenCapture.captureAnnotated).not.toHaveBeenCalled()
+    })
+
+    it("uses the screenshot captured on hotkey press (not on release)", async () => {
+      const { services, screenCapture } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ text: "hello" }))
+        .mockResolvedValueOnce(createStreamResponse(["Hi there"]))
+        .mockResolvedValueOnce(
+          createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
+        )
+
+      client.startListening()
+
+      // Screenshot should have been called exactly once on start
+      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+
+      await client.stopListening()
+
+      // Screenshot should STILL only have been called once (on start, not on stop)
+      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+
+      // Verify the screenshot was used in the chat request
+      const chatPayload = readJsonRequestBody(fetchMock, 1)
+      expect(chatPayload.screenshot).toBe(defaultAnnotatedScreenshot.imageData)
+    })
+
+    it("fails the turn when screenshot capture fails", async () => {
+      const onError = vi.fn()
+      const { services, screenCapture } = createMockServices({
+        screenCapture: {
+          captureAnnotated: vi
+            .fn<() => Promise<AnnotatedScreenshotResult>>()
+            .mockRejectedValue(new Error("screenshot failed")),
+        },
+      })
+      const client = new CursorBuddyClient("/api", { onError }, services)
+
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      client.startListening()
+      await client.stopListening()
+
+      // Should report screenshot error with the original error details
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Failed to capture screenshot: screenshot failed",
+        }),
+      )
+      expect(client.getSnapshot()).toMatchObject({
+        state: "idle",
+        error: expect.objectContaining({
+          message: "Failed to capture screenshot: screenshot failed",
+        }),
+      })
+      // No chat request should be made
+      expect(fetchMock).not.toHaveBeenCalled()
     })
 
     it("processes a full turn, maps pointing coordinates, and appends atomic history", async () => {
@@ -860,6 +937,47 @@ describe("CursorBuddyClient", () => {
       expect(firstSignal.aborted).toBe(true)
       expect(audioPlayback.stop).toHaveBeenCalled()
       expect($audioLevel.get()).toBe(0)
+    })
+
+    it("starts a fresh screenshot capture when interrupted", async () => {
+      const { services, screenCapture } = createMockServices()
+      const client = new CursorBuddyClient("/api", {}, services)
+      const screenshotDeferred = createDeferred<AnnotatedScreenshotResult>()
+
+      // First screenshot hangs
+      screenCapture.captureAnnotated
+        .mockReturnValueOnce(screenshotDeferred.promise)
+        .mockResolvedValueOnce({
+          ...defaultAnnotatedScreenshot,
+          imageData: "data:image/jpeg;base64,second-screenshot",
+        })
+
+      const fetchMock = vi.fn()
+      vi.stubGlobal("fetch", fetchMock)
+
+      fetchMock
+        .mockResolvedValueOnce(createJsonResponse({ text: "hello" }))
+        .mockResolvedValueOnce(createStreamResponse(["Hi"]))
+        .mockResolvedValueOnce(
+          createBlobResponse(new Blob(["tts"], { type: "audio/mpeg" })),
+        )
+
+      // Start first session
+      client.startListening()
+      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+
+      // Interrupt with a new session
+      client.startListening()
+      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(2)
+
+      // Complete the second session
+      await client.stopListening()
+
+      // Verify the second screenshot was used
+      const chatPayload = readJsonRequestBody(fetchMock, 1)
+      expect(chatPayload.screenshot).toBe(
+        "data:image/jpeg;base64,second-screenshot",
+      )
     })
 
     it("commits partial history when interrupted mid-response", async () => {
