@@ -1,4 +1,4 @@
-import { streamText } from "ai"
+import { type StopCondition, stepCountIs, streamText } from "ai"
 import { pointTool } from "../../shared/point-tool"
 import { DEFAULT_SYSTEM_PROMPT } from "../system-prompt"
 import type { ChatRequestBody, CursorBuddyHandlerConfig } from "../types"
@@ -60,26 +60,70 @@ export async function handleChat(
               },
             ]
           : []),
-        {
-          type: "image" as const,
-          image: screenshot,
-        },
-        {
-          type: "text" as const,
-          text: transcript,
-        },
+        { type: "image" as const, image: screenshot },
+        { type: "text" as const, text: transcript },
       ],
     },
   ]
+
+  const tools = {
+    point: pointTool,
+    ...config.tools,
+  }
+
+  const mustContinueUntilText: StopCondition<typeof tools> = ({ steps }) => {
+    const lastStep = steps.at(-1)
+    if (!lastStep) return false
+
+    const stepText =
+      typeof lastStep.text === "string" ? lastStep.text.trim() : ""
+    const hadToolResults =
+      Array.isArray(lastStep.toolResults) && lastStep.toolResults.length > 0
+
+    // Stop only after we have actual assistant text.
+    // If the step was tool-only, continue the loop.
+    if (stepText.length > 0) return true
+    if (hadToolResults) return false
+
+    return false
+  }
 
   const result = streamText({
     model: config.model,
     system: systemPrompt,
     providerOptions: config?.modelProviderMetadata,
     messages,
-    tools: {
-      point: pointTool,
-      ...config.tools,
+    tools,
+
+    // Allow a follow-up step after tool use instead of the default single step.
+    stopWhen: [mustContinueUntilText, stepCountIs(3)],
+
+    prepareStep: async ({ stepNumber, steps }) => {
+      // Normal first pass: let the model speak and optionally point.
+      if (stepNumber === 0) {
+        return {}
+      }
+
+      const previousStep = steps.at(-1)
+
+      const prevText =
+        typeof previousStep?.text === "string" ? previousStep.text.trim() : ""
+
+      const usedPoint =
+        previousStep?.toolCalls?.some((call) => call.toolName === "point") ??
+        false
+
+      // If the previous step pointed but did not speak, force the next step
+      // to be text-only by removing the point tool.
+      if (usedPoint && prevText.length === 0) {
+        const toolNames = Object.keys(tools) as Array<keyof typeof tools>
+
+        return {
+          activeTools: toolNames.filter((name) => name !== "point"),
+        }
+      }
+
+      return {}
     },
   })
 
