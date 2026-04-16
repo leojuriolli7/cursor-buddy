@@ -13,6 +13,7 @@ export interface CursorBuddyHandlerConfig {
    * Optional when clients use browser-only speech.
    */
   speechModel?: SpeechModel
+  speechVoice?: string
 
   /**
    * AI SDK transcription model (e.g., openai.transcription("whisper-1")).

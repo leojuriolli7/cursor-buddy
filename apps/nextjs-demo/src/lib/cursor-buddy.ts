@@ -1,4 +1,7 @@
-import { OpenAILanguageModelResponsesOptions, openai } from "@ai-sdk/openai"
+import {
+  type OpenAILanguageModelResponsesOptions,
+  openai,
+} from "@ai-sdk/openai"
 import { createCursorBuddyHandler } from "cursor-buddy/server"
 
 export const cursorBuddy = createCursorBuddyHandler({
@@ -58,6 +61,7 @@ export const cursorBuddy = createCursorBuddyHandler({
       textVerbosity: "low",
     } satisfies OpenAILanguageModelResponsesOptions,
   },
+  speechVoice: "cedar",
   speechModel: openai.speech("gpt-4o-mini-tts"),
   transcriptionModel: openai.transcription("gpt-4o-mini-transcribe"),
 })

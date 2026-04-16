@@ -35,6 +35,7 @@ export async function handleTTS(
   const result = await generateSpeech({
     model: config.speechModel,
     text,
+    voice: config?.speechVoice,
     outputFormat,
   })
 
