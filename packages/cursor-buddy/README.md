@@ -12,7 +12,7 @@ Customize its prompt, pass custom tools, choose between browser or server-side s
 
 - **Push-to-talk voice input** — Hold a hotkey to speak, release to send
 - **Browser-first live transcription** — Realtime transcript while speaking, with server fallback
-- **Annotated screenshot context** — AI sees your current viewport with numbered interactive elements
+- **DOM snapshot context** — AI sees a token-efficient representation of your visible page structure
 - **Voice responses** — Browser or server TTS, with optional streaming playback
 - **Cursor pointing** — AI can point at UI elements it references
 - **Voice interruption** — Start talking again to cut off current response
@@ -367,17 +367,15 @@ client.stopListening()
 
 1. User holds the hotkey
 2. Microphone captures audio, waveform shows audio level, and browser speech recognition starts when available
-3. User releases hotkey
-4. An annotated screenshot of the viewport is captured, with numbered markers on visible interactive elements, based on [agent-browser](https://github.com/vercel-labs/agent-browser) implementation.
+3. At the same time, a screenshot and token-efficient DOM snapshot of the viewport are captured in the background. This runs in parallel with speech capture to minimize latency
+4. User releases hotkey
 5. The client prefers the browser transcript; if it is unavailable or empty in `auto` mode, the recorded audio is transcribed on the server
-6. Screenshot + marker context are sent to the AI model
-7. AI responds with text and can optionally call the `point` tool to indicate a location on screen:
-   - `type: "marker"` with `markerId` for numbered interactive elements (most accurate)
-   - `type: "coordinates"` with `x, y` pixel coordinates for anything without a marker
+6. The already-captured screenshot + DOM snapshot are sent to the AI model. Each element has an `@ID` (e.g., `@12`) that the AI can reference.
+7. AI responds with text and can optionally call the `point` tool to indicate an element on screen by its `@ID` from the DOM snapshot
 8. Response is spoken in the browser or on the server based on `speech.mode`,
-   and can either wait for the full response or stream sentence-by-sentence
-   based on `speech.allowStreaming`
-9. If the AI calls the point tool, the cursor animates to the target location — markers resolve to live DOM elements, coordinates map to viewport positions
+    and can either wait for the full response or stream sentence-by-sentence
+    based on `speech.allowStreaming`
+9. If the AI calls the point tool, the cursor animates to the target element's current position (it resolves the element from the snapshot registry and computes its center point)
 10. **If user presses hotkey again at any point, current response is interrupted**
 
 ## Security Best Practices

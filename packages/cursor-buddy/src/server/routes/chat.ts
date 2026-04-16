@@ -11,7 +11,7 @@ export async function handleChat(
   config: CursorBuddyHandlerConfig,
 ): Promise<Response> {
   const body = (await request.json()) as ChatRequestBody
-  const { screenshot, transcript, history, capture, markerContext } = body
+  const { screenshot, transcript, history, capture, domSnapshot } = body
 
   // Resolve system prompt (string or function)
   const systemPrompt =
@@ -23,7 +23,7 @@ export async function handleChat(
   const maxMessages = (config.maxHistory ?? 10) * 2
   const trimmedHistory = history.slice(-maxMessages)
 
-  // Build capture context with marker information
+  // Build capture context with DOM snapshot
   const captureContextParts: string[] = []
 
   if (capture) {
@@ -32,8 +32,12 @@ export async function handleChat(
     )
   }
 
-  if (markerContext) {
-    captureContextParts.push("", markerContext)
+  if (domSnapshot) {
+    captureContextParts.push(
+      "",
+      "Visible page structure (each element has @X ID for pointing):",
+      domSnapshot,
+    )
   }
 
   const captureContext =
@@ -76,49 +80,6 @@ export async function handleChat(
     tools: {
       point: pointTool,
       ...config.tools,
-    },
-    experimental_repairToolCall: async ({ toolCall }) => {
-      if (toolCall.toolName !== "point") return null
-
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(toolCall.input)
-      } catch {
-        return null
-      }
-
-      if (!parsed || typeof parsed !== "object") return null
-
-      const input = parsed as Record<string, unknown>
-
-      if (input.type === "marker") {
-        const repaired = {
-          type: "marker",
-          markerId: input.markerId,
-          label: input.label,
-        }
-
-        return {
-          ...toolCall,
-          input: JSON.stringify(repaired),
-        }
-      }
-
-      if (input.type === "coordinates") {
-        const repaired = {
-          type: "coordinates",
-          x: input.x,
-          y: input.y,
-          label: input.label,
-        }
-
-        return {
-          ...toolCall,
-          input: JSON.stringify(repaired),
-        }
-      }
-
-      return null
     },
   })
 

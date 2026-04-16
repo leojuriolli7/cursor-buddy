@@ -64,9 +64,7 @@ export function parseUIStreamLine(line: string): UIStreamChunk | null {
 /**
  * Check if a tool call is a point tool call with valid input.
  */
-export function isPointToolCall(
-  chunk: UIStreamChunk,
-): chunk is {
+export function isPointToolCall(chunk: UIStreamChunk): chunk is {
   type: "tool-input-available"
   toolName: "point"
   input: PointToolInput
@@ -76,7 +74,7 @@ export function isPointToolCall(
     chunk.toolName === "point" &&
     chunk.input != null &&
     typeof chunk.input === "object" &&
-    "type" in chunk.input &&
+    "elementId" in chunk.input &&
     "label" in chunk.input
   )
 }

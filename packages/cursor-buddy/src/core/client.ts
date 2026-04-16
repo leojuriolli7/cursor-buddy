@@ -12,7 +12,6 @@ import {
 import { VoiceCaptureService } from "./services/voice-capture"
 import { createStateMachine, type StateMachine } from "./state-machine"
 import type {
-  AnnotatedScreenshotResult,
   AudioPlaybackPort,
   BrowserSpeechPort,
   ConversationMessage,
@@ -24,15 +23,11 @@ import type {
   PointerControllerPort,
   PointingTarget,
   ScreenCapturePort,
+  ScreenshotResult,
   VoiceCapturePort,
 } from "./types"
-import { resolveMarkerToCoordinates } from "./utils/elements"
 import { toError } from "./utils/error"
 import { ProgressiveResponseProcessor } from "./utils/response-processor"
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
-}
 
 async function readErrorMessage(
   response: Response,
@@ -55,35 +50,6 @@ async function readErrorMessage(
   }
 
   return fallbackMessage
-}
-
-/**
- * Map coordinate-based pointing from screenshot space to viewport space.
- */
-function mapCoordinatesToViewport(
-  x: number,
-  y: number,
-  screenshot: AnnotatedScreenshotResult,
-): { x: number; y: number } {
-  if (screenshot.width <= 0 || screenshot.height <= 0) {
-    return { x, y }
-  }
-
-  const scaleX = screenshot.viewportWidth / screenshot.width
-  const scaleY = screenshot.viewportHeight / screenshot.height
-
-  return {
-    x: clamp(
-      Math.round(x * scaleX),
-      0,
-      Math.max(screenshot.viewportWidth - 1, 0),
-    ),
-    y: clamp(
-      Math.round(y * scaleY),
-      0,
-      Math.max(screenshot.viewportHeight - 1, 0),
-    ),
-  }
 }
 
 export type { CursorBuddyServices } from "./types"
@@ -118,7 +84,7 @@ export class CursorBuddyClient {
   private abortController: AbortController | null = null
   private historyCommittedForTurn = false
   private speechProviderForTurn: "browser" | "server" | null = null
-  private screenshotPromise: Promise<AnnotatedScreenshotResult> | null = null
+  private screenshotPromise: Promise<ScreenshotResult> | null = null
 
   // Cached snapshot for useSyncExternalStore (must be referentially stable)
   private cachedSnapshot: CursorBuddySnapshot
@@ -194,7 +160,7 @@ export class CursorBuddyClient {
     const signal = this.abortController.signal
 
     // 5. Screenshot is captured in parallel with voice input to reduce latency
-    this.screenshotPromise = this.screenCapture.captureAnnotated()
+    this.screenshotPromise = this.screenCapture.capture()
 
     // 6. Start mic (async, errors go to error state)
     this.beginListeningSession(signal).catch((error) => {
@@ -231,7 +197,7 @@ export class CursorBuddyClient {
         this.stopLiveTranscription(),
       ])
 
-      let screenshot: AnnotatedScreenshotResult
+      let screenshot: ScreenshotResult
       try {
         if (!this.screenshotPromise) {
           throw new Error("Screenshot was not started")
@@ -278,27 +244,18 @@ export class CursorBuddyClient {
 
       this.options.onResponse?.(cleanResponse)
 
-      // Resolve pointing target from tool call (marker-based or coordinate-based)
+      // Resolve pointing target from tool call using element ID
       let pointTarget: PointingTarget | null = null
 
       if (pointToolCall) {
-        if (pointToolCall.type === "marker") {
-          // Resolve marker ID to element coordinates
-          const coords = resolveMarkerToCoordinates(
-            screenshot.markerMap,
-            pointToolCall.markerId!,
-          )
-          if (coords) {
-            pointTarget = { ...coords, label: pointToolCall.label }
-          }
-        } else {
-          // Map coordinates from screenshot space to viewport space
-          const coords = mapCoordinatesToViewport(
-            pointToolCall.x!,
-            pointToolCall.y!,
-            screenshot,
-          )
-          pointTarget = { ...coords, label: pointToolCall.label }
+        // Look up element by ID from the DOM snapshot registry
+        const element = screenshot.elementRegistry.get(pointToolCall.elementId)
+        if (element) {
+          // Get current element center (element may have moved since snapshot)
+          const rect = element.getBoundingClientRect()
+          const x = Math.round(rect.left + rect.width / 2)
+          const y = Math.round(rect.top + rect.height / 2)
+          pointTarget = { x, y, label: pointToolCall.label }
         }
       }
 
@@ -472,7 +429,7 @@ export class CursorBuddyClient {
    */
   private async chatAndSpeak(
     transcript: string,
-    screenshot: AnnotatedScreenshotResult,
+    screenshot: ScreenshotResult,
     signal: AbortSignal | undefined,
     options: {
       onFailure: (error: Error) => void
@@ -496,7 +453,7 @@ export class CursorBuddyClient {
         },
         transcript,
         history,
-        markerContext: screenshot.markerContext,
+        domSnapshot: screenshot.domSnapshot,
       }),
       signal,
     })

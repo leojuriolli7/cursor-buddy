@@ -1,6 +1,5 @@
 import { type Mocked, vi } from "vitest"
 import type {
-  AnnotatedScreenshotResult,
   AudioPlaybackPort,
   BrowserSpeechPort,
   CursorBuddyServices,
@@ -8,17 +7,19 @@ import type {
   PointerControllerPort,
   PointingTarget,
   ScreenCapturePort,
+  ScreenshotResult,
   VoiceCapturePort,
 } from "../types"
 
-export const defaultAnnotatedScreenshot: AnnotatedScreenshotResult = {
+export const defaultScreenshotResult: ScreenshotResult = {
   imageData: "data:image/jpeg;base64,test",
   width: 1280,
   height: 720,
   viewportWidth: 1920,
   viewportHeight: 1080,
-  markerMap: new Map(),
-  markerContext: "No interactive elements detected.",
+  domSnapshot:
+    '# viewport 1920x1080\n@1 body "Test body" [x=0 y=0 w=1920 h=1080]',
+  elementRegistry: new Map(),
 }
 
 export function createJsonResponse(body: unknown, ok = true) {
@@ -74,7 +75,9 @@ export function createUIStreamResponse(
 
   // Add text-delta events
   for (const text of textChunks) {
-    lines.push(JSON.stringify({ type: "text-delta", delta: text, id: "text-1" }))
+    lines.push(
+      JSON.stringify({ type: "text-delta", delta: text, id: "text-1" }),
+    )
   }
 
   // Add tool-input-available if provided
@@ -176,11 +179,8 @@ export function createMockServices(
 
   const screenCapture: Mocked<ScreenCapturePort> = {
     capture: vi
-      .fn<() => Promise<AnnotatedScreenshotResult>>()
-      .mockResolvedValue(defaultAnnotatedScreenshot),
-    captureAnnotated: vi
-      .fn<() => Promise<AnnotatedScreenshotResult>>()
-      .mockResolvedValue(defaultAnnotatedScreenshot),
+      .fn<() => Promise<ScreenshotResult>>()
+      .mockResolvedValue(defaultScreenshotResult),
   }
 
   const pointerController: Mocked<PointerControllerPort> = {

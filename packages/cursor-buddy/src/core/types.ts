@@ -34,7 +34,7 @@ export interface Point {
 }
 
 /**
- * Screenshot capture result
+ * Screenshot capture result with DOM snapshot
  */
 export interface ScreenshotResult {
   /** Base64-encoded image data URL */
@@ -47,19 +47,10 @@ export interface ScreenshotResult {
   viewportWidth: number
   /** Live browser viewport height in CSS pixels */
   viewportHeight: number
-}
-
-// Re-export MarkerMap type from elements module
-export type { ElementMarker, MarkerMap } from "./utils/elements"
-
-/**
- * Annotated screenshot result with marker map.
- */
-export interface AnnotatedScreenshotResult extends ScreenshotResult {
-  /** Map of marker ID to element reference */
-  markerMap: import("./utils/elements").MarkerMap
-  /** Text description of markers for AI context */
-  markerContext: string
+  /** Token-efficient DOM snapshot for AI context */
+  domSnapshot: string
+  /** Map of element IDs to actual DOM elements for pointing */
+  elementRegistry: Map<number, HTMLElement>
 }
 
 /**
@@ -166,7 +157,6 @@ export interface BrowserSpeechPort {
  */
 export interface ScreenCapturePort {
   capture(): Promise<ScreenshotResult>
-  captureAnnotated(): Promise<AnnotatedScreenshotResult>
 }
 
 /**

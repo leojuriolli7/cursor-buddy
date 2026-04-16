@@ -43,16 +43,14 @@ describe("ProgressiveResponseProcessor", () => {
         type: "tool-input-available",
         toolCallId: "call_1",
         toolName: "point",
-        input: { type: "coordinates", x: 640, y: 360, label: "Save button" },
+        input: { elementId: 12, label: "Save button" },
       }) + "\n",
     )
     const finalResult = processor.finish()
 
     expect(finalResult.finalResponseText).toBe("Click the save button")
     expect(finalResult.pointToolCall).toEqual({
-      type: "coordinates",
-      x: 640,
-      y: 360,
+      elementId: 12,
       label: "Save button",
     })
   })

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { $audioLevel, $conversationHistory, $isEnabled } from "../atoms"
 import { CursorBuddyClient } from "../client"
-import type { AnnotatedScreenshotResult } from "../types"
+import type { ScreenshotResult } from "../types"
 import {
   createBlobResponse,
   createDeferred,
   createJsonResponse,
   createMockServices,
   createUIStreamResponse,
-  defaultAnnotatedScreenshot,
+  defaultScreenshotResult,
 } from "./test-utils"
 
 function readJsonRequestBody(
@@ -133,12 +133,12 @@ describe("CursorBuddyClient", () => {
       const client = new CursorBuddyClient("/api", {}, services)
 
       // Screenshot should NOT be called before startListening
-      expect(screenCapture.captureAnnotated).not.toHaveBeenCalled()
+      expect(screenCapture.capture).not.toHaveBeenCalled()
 
       client.startListening()
 
       // Screenshot SHOULD be called immediately on hotkey press
-      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+      expect(screenCapture.capture).toHaveBeenCalledTimes(1)
     })
 
     it("updates the live transcript while browser transcription is listening", () => {
@@ -236,7 +236,7 @@ describe("CursorBuddyClient", () => {
 
       expect(voiceCapture.stop).not.toHaveBeenCalled()
       // Screenshot is NOT called on stopListening (it's started on startListening)
-      expect(screenCapture.captureAnnotated).not.toHaveBeenCalled()
+      expect(screenCapture.capture).not.toHaveBeenCalled()
     })
 
     it("uses the screenshot captured on hotkey press (not on release)", async () => {
@@ -256,24 +256,24 @@ describe("CursorBuddyClient", () => {
       client.startListening()
 
       // Screenshot should have been called exactly once on start
-      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+      expect(screenCapture.capture).toHaveBeenCalledTimes(1)
 
       await client.stopListening()
 
       // Screenshot should STILL only have been called once (on start, not on stop)
-      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+      expect(screenCapture.capture).toHaveBeenCalledTimes(1)
 
       // Verify the screenshot was used in the chat request
       const chatPayload = readJsonRequestBody(fetchMock, 1)
-      expect(chatPayload.screenshot).toBe(defaultAnnotatedScreenshot.imageData)
+      expect(chatPayload.screenshot).toBe(defaultScreenshotResult.imageData)
     })
 
     it("fails the turn when screenshot capture fails", async () => {
       const onError = vi.fn()
       const { services, screenCapture } = createMockServices({
         screenCapture: {
-          captureAnnotated: vi
-            .fn<() => Promise<AnnotatedScreenshotResult>>()
+          capture: vi
+            .fn<() => Promise<ScreenshotResult>>()
             .mockRejectedValue(new Error("screenshot failed")),
         },
       })
@@ -305,8 +305,33 @@ describe("CursorBuddyClient", () => {
       const onTranscript = vi.fn()
       const onResponse = vi.fn()
       const onPoint = vi.fn()
-      const { services, pointerController, audioPlayback } =
-        createMockServices()
+
+      // Create a mock element for the point tool to look up
+      const mockElement = {
+        getBoundingClientRect: vi.fn().mockReturnValue({
+          left: 640,
+          top: 360,
+          width: 100,
+          height: 50,
+        }),
+      } as unknown as HTMLElement
+
+      const elementRegistry = new Map<number, HTMLElement>()
+      elementRegistry.set(5, mockElement)
+
+      const { services, pointerController, audioPlayback } = createMockServices(
+        {
+          screenCapture: {
+            capture: vi
+              .fn<() => Promise<ScreenshotResult>>()
+              .mockResolvedValue({
+                ...defaultScreenshotResult,
+                elementRegistry,
+              }),
+          },
+        },
+      )
+
       const client = new CursorBuddyClient(
         "/api",
         { onTranscript, onResponse, onPoint },
@@ -323,7 +348,7 @@ describe("CursorBuddyClient", () => {
         .mockResolvedValueOnce(
           createUIStreamResponse(["Click Save "], {
             toolName: "point",
-            args: { type: "coordinates", x: 640, y: 360, label: "Save button" },
+            args: { elementId: 5, label: "Save button" },
           }),
         )
         .mockResolvedValueOnce(
@@ -343,14 +368,15 @@ describe("CursorBuddyClient", () => {
       })
       expect(onTranscript).toHaveBeenCalledWith("Open the save menu")
       expect(onResponse).toHaveBeenCalledWith("Click Save")
+      // Element center should be at (640 + 50, 360 + 25) = (690, 385)
       expect(onPoint).toHaveBeenCalledWith({
-        x: 960,
-        y: 540,
+        x: 690,
+        y: 385,
         label: "Save button",
       })
       expect(pointerController.pointAt).toHaveBeenCalledWith({
-        x: 960,
-        y: 540,
+        x: 690,
+        y: 385,
         label: "Save button",
       })
       expect(audioPlayback.play).toHaveBeenCalledTimes(1)
@@ -366,14 +392,14 @@ describe("CursorBuddyClient", () => {
 
       const chatPayload = readJsonRequestBody(fetchMock, 1)
       expect(chatPayload).toEqual({
-        screenshot: defaultAnnotatedScreenshot.imageData,
+        screenshot: defaultScreenshotResult.imageData,
         capture: {
-          width: defaultAnnotatedScreenshot.width,
-          height: defaultAnnotatedScreenshot.height,
+          width: defaultScreenshotResult.width,
+          height: defaultScreenshotResult.height,
         },
         transcript: "Open the save menu",
         history: [],
-        markerContext: defaultAnnotatedScreenshot.markerContext,
+        domSnapshot: defaultScreenshotResult.domSnapshot,
       })
 
       const ttsPayload = readJsonRequestBody(fetchMock, 2)
@@ -955,13 +981,13 @@ describe("CursorBuddyClient", () => {
     it("starts a fresh screenshot capture when interrupted", async () => {
       const { services, screenCapture } = createMockServices()
       const client = new CursorBuddyClient("/api", {}, services)
-      const screenshotDeferred = createDeferred<AnnotatedScreenshotResult>()
+      const screenshotDeferred = createDeferred<ScreenshotResult>()
 
       // First screenshot hangs
-      screenCapture.captureAnnotated
+      screenCapture.capture
         .mockReturnValueOnce(screenshotDeferred.promise)
         .mockResolvedValueOnce({
-          ...defaultAnnotatedScreenshot,
+          ...defaultScreenshotResult,
           imageData: "data:image/jpeg;base64,second-screenshot",
         })
 
@@ -977,11 +1003,11 @@ describe("CursorBuddyClient", () => {
 
       // Start first session
       client.startListening()
-      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(1)
+      expect(screenCapture.capture).toHaveBeenCalledTimes(1)
 
       // Interrupt with a new session
       client.startListening()
-      expect(screenCapture.captureAnnotated).toHaveBeenCalledTimes(2)
+      expect(screenCapture.capture).toHaveBeenCalledTimes(2)
 
       // Complete the second session
       await client.stopListening()

@@ -1,15 +1,14 @@
 import html2canvas from "html2canvas-pro"
-import type { AnnotatedScreenshotResult, ScreenshotResult } from "../types"
-import { createAnnotatedCanvas, generateMarkerContext } from "./annotations"
-import { createMarkerMap } from "./elements"
+import type { ScreenshotResult } from "../types"
+import { buildVisibleDomSnapshot } from "./dom-snapshot"
 
 const CLONE_RESOURCE_TIMEOUT_MS = 3000
 
 /** Maximum width for compressed screenshots (maintains aspect ratio) */
-const MAX_SCREENSHOT_WIDTH = 1280
+const MAX_SCREENSHOT_WIDTH = 1920
 
-/** JPEG quality for compressed screenshots (0-1) */
-const JPEG_QUALITY = 0.8
+/** JPEG quality for compressed screenshots (0-1) - higher quality for clearer details */
+const JPEG_QUALITY = 0.95
 
 /**
  * Compression result with compressed image data and dimensions.
@@ -211,14 +210,16 @@ function createFallbackCanvas(): HTMLCanvasElement {
 }
 
 /**
- * Capture a screenshot of the current viewport.
- * Uses html2canvas to render the DOM to a canvas, then compresses to JPEG.
- * Falls back to a placeholder if capture fails (e.g., due to unsupported CSS).
+ * Capture a screenshot and DOM snapshot of the current viewport.
+ * Uses html2canvas to render the DOM to a canvas, compresses to high-quality JPEG,
+ * and builds a token-efficient DOM snapshot for AI context.
+ * Falls back to a placeholder if capture fails.
  */
 export async function captureViewport(): Promise<ScreenshotResult> {
   const captureMetrics = getCaptureMetrics()
-  let canvas: HTMLCanvasElement
 
+  // 1. Capture screenshot
+  let canvas: HTMLCanvasElement
   try {
     canvas = await html2canvas(
       document.body,
@@ -228,7 +229,7 @@ export async function captureViewport(): Promise<ScreenshotResult> {
     canvas = createFallbackCanvas()
   }
 
-  // Compress the screenshot (with fallback to uncompressed on error)
+  // 2. Compress the screenshot (with fallback to uncompressed on error)
   let compressed: CompressionResult
   try {
     compressed = compressImage(canvas)
@@ -241,60 +242,12 @@ export async function captureViewport(): Promise<ScreenshotResult> {
     }
   }
 
-  return {
-    imageData: compressed.imageData,
-    width: compressed.width,
-    height: compressed.height,
-    viewportWidth: captureMetrics.viewportWidth,
-    viewportHeight: captureMetrics.viewportHeight,
-  }
-}
-
-/**
- * Capture an annotated screenshot of the current viewport.
- * Interactive elements are marked with numbered labels.
- * Returns both the annotated image and a marker map for resolving IDs.
- */
-export async function captureAnnotatedViewport(): Promise<AnnotatedScreenshotResult> {
-  const captureMetrics = getCaptureMetrics()
-
-  // 1. Discover interactive elements BEFORE capturing screenshot
-  //    (so rects are accurate to what's visible)
-  const markerMap = createMarkerMap()
-
-  // 2. Capture screenshot
-  let sourceCanvas: HTMLCanvasElement
-  try {
-    sourceCanvas = await html2canvas(
-      document.body,
-      getHtml2CanvasOptions(captureMetrics),
-    )
-  } catch {
-    sourceCanvas = createFallbackCanvas()
-  }
-
-  // 3. Create a fresh canvas and draw annotations on it
-  //    (html2canvas leaves dirty context state - transforms, clipping, etc.)
-  const canvas =
-    markerMap.size > 0
-      ? createAnnotatedCanvas(sourceCanvas, markerMap)
-      : sourceCanvas
-
-  // 4. Generate marker context for AI
-  const markerContext = generateMarkerContext(markerMap)
-
-  // 5. Compress the screenshot (with fallback to uncompressed on error)
-  let compressed: CompressionResult
-  try {
-    compressed = compressImage(canvas)
-  } catch {
-    // Fallback: use uncompressed PNG
-    compressed = {
-      imageData: canvas.toDataURL("image/png"),
-      width: canvas.width,
-      height: canvas.height,
-    }
-  }
+  // 3. Build DOM snapshot for AI context
+  const snapshot = buildVisibleDomSnapshot(document.body, {
+    maxNodes: 1500,
+    maxTextLength: 80,
+    includeRects: true,
+  })
 
   return {
     imageData: compressed.imageData,
@@ -302,7 +255,7 @@ export async function captureAnnotatedViewport(): Promise<AnnotatedScreenshotRes
     height: compressed.height,
     viewportWidth: captureMetrics.viewportWidth,
     viewportHeight: captureMetrics.viewportHeight,
-    markerMap,
-    markerContext,
+    domSnapshot: snapshot.text,
+    elementRegistry: snapshot.idToElement,
   }
 }

@@ -1,117 +1,39 @@
 import { tool } from "ai"
 import { z } from "zod"
 
-export const pointToolInputSchema = z
-  .object({
-    type: z
-      .enum(["marker", "coordinates"])
-      .describe(
-        "How to point. Use 'marker' for interactive elements that have a marker. Use 'coordinates' only for visible non-interactive content without a marker.",
-      ),
+export const pointToolInputSchema = z.object({
+  elementId: z
+    .number()
+    .int()
+    .min(1)
+    .describe(
+      "The element ID from the DOM snapshot (e.g., @12 becomes elementId: 12). " +
+        "Each element in the DOM snapshot has an @X identifier - use that number here.",
+    ),
 
-    markerId: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe(
-        "Required when type is 'marker'. The marker ID of the interactive element to point at.",
-      ),
-
-    x: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe(
-        "Required when type is 'coordinates'. The horizontal pixel coordinate from the left edge of the screenshot (0 = leftmost). Must be within the screenshot width.",
-      ),
-
-    y: z
-      .number()
-      .int()
-      .min(0)
-      .optional()
-      .describe(
-        "Required when type is 'coordinates'. The vertical pixel coordinate from the top edge of the screenshot (0 = topmost). Must be within the screenshot height.",
-      ),
-
-    label: z
-      .string()
-      .min(1)
-      .max(24)
-      .describe(
-        "A very short label for the pointer bubble, ideally 2 to 4 words.",
-      ),
-  })
-  .superRefine((value, ctx) => {
-    if (value.type === "marker") {
-      if (value.markerId == null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["markerId"],
-          message: "markerId is required when type is 'marker'.",
-        })
-      }
-
-      if (value.x != null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["x"],
-          message: "x must not be provided when type is 'marker'.",
-        })
-      }
-
-      if (value.y != null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["y"],
-          message: "y must not be provided when type is 'marker'.",
-        })
-      }
-    }
-
-    if (value.type === "coordinates") {
-      if (value.x == null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["x"],
-          message: "x is required when type is 'coordinates'.",
-        })
-      }
-
-      if (value.y == null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["y"],
-          message: "y is required when type is 'coordinates'.",
-        })
-      }
-
-      if (value.markerId != null) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["markerId"],
-          message: "markerId must not be provided when type is 'coordinates'.",
-        })
-      }
-    }
-  })
+  label: z
+    .string()
+    .min(1)
+    .max(24)
+    .describe(
+      "A very short label for the pointer bubble, ideally 2 to 4 words.",
+    ),
+})
 
 export type PointToolInput = z.infer<typeof pointToolInputSchema>
 
 export const pointTool = tool({
   description:
-    "Visually point at something on the user's screen. " +
+    "Visually point at an element on the user's screen. " +
     "Use this tool when the user asks you to locate, indicate, highlight, or show a specific visible target on screen. " +
-    "Prefer type 'marker' for interactive elements that have a marker. " +
-    "Use type 'coordinates' only for visible non-interactive content without a marker. " +
+    "Each element in the visible DOM snapshot has an @X identifier (like @5, @12, @34). " +
+    "Find the element you want to point at in the DOM snapshot, note its @X ID, and pass that ID here. " +
     "Do not describe a pointing action in plain text instead of calling this tool. " +
     "Call this tool at most once per response, and only after your spoken reply.",
 
   inputSchema: pointToolInputSchema,
 
   execute: async (params) => {
-    return `Pointed at "${params.label}" on the user's screen.`
+    return `Pointed at "${params.label}" (element @${params.elementId}) on the user's screen.`
   },
 })

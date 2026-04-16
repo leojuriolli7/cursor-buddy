@@ -66,8 +66,8 @@ export interface ChatRequestBody {
   /** Previous conversation messages */
   history: Array<{ role: "user" | "assistant"; content: string }>
 
-  /** Text description of interactive element markers visible in the screenshot */
-  markerContext?: string
+  /** Token-efficient DOM snapshot showing visible page structure with @X element IDs */
+  domSnapshot?: string
 }
 
 /**
