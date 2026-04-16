@@ -24,7 +24,7 @@ export const pointToolInputSchema = z
       .min(0)
       .optional()
       .describe(
-        "Required when type is 'coordinates'. The horizontal pixel coordinate of the center of the target area.",
+        "Required when type is 'coordinates'. The horizontal pixel coordinate from the left edge of the screenshot (0 = leftmost). Must be within the screenshot width.",
       ),
 
     y: z
@@ -33,7 +33,7 @@ export const pointToolInputSchema = z
       .min(0)
       .optional()
       .describe(
-        "Required when type is 'coordinates'. The vertical pixel coordinate of the center of the target area.",
+        "Required when type is 'coordinates'. The vertical pixel coordinate from the top edge of the screenshot (0 = topmost). Must be within the screenshot height.",
       ),
 
     label: z

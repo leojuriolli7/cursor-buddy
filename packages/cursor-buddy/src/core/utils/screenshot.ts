@@ -169,7 +169,7 @@ function getHtml2CanvasOptions(
   captureMetrics: ReturnType<typeof getCaptureMetrics>,
 ) {
   return {
-    scale: 1,
+    scale: window.devicePixelRatio,
     useCORS: true,
     logging: false,
     width: captureMetrics.viewportWidth,
