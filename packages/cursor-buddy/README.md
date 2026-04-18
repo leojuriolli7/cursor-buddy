@@ -1,7 +1,13 @@
 # cursor-buddy
 
 
+
+
 https://github.com/user-attachments/assets/def0876a-d63c-4e31-b633-9be3fb2b79b5
+
+
+
+
 
 
 AI Agent that lives in your cursor, built for web apps. Push-to-talk voice assistant that can see your screen and point at things.
@@ -82,6 +88,89 @@ export default function RootLayout({ children }) {
 ```
 
 That's it! Hold **Ctrl+Alt** to speak, release to send.
+
+## How It Works
+
+```mermaid
+flowchart LR
+    subgraph Input
+        A[Hold hotkey] --> B[Mic + Speech Recognition]
+        A --> C[Screenshot + DOM Snapshot]
+    end
+
+    subgraph Transcription
+        B --> D{Browser transcript?}
+        D -->|Yes| E[Use browser transcript]
+        D -->|No| F[Server transcription]
+    end
+
+    subgraph Processing
+        E --> G[Send to AI with context]
+        F --> G
+        C --> G
+        G --> H[AI Response]
+        H -->|point tool called| I[Animate cursor to @ID]
+    end
+
+    subgraph Output
+        H --> J[Speak response via TTS]
+    end
+```
+
+1. User holds the hotkey
+2. Microphone captures audio and browser speech recognition starts when available
+3. At the same time, a screenshot and token-efficient DOM snapshot of the viewport are captured in the background. This runs in parallel with speech capture to minimize latency
+4. User releases hotkey
+5. The client prefers the browser transcript; if it is unavailable or empty in `auto` mode, the recorded audio is transcribed on the server
+6. The already-captured screenshot + DOM snapshot are sent to the AI model. Each element has an `@ID` (e.g., `@12`) that the AI can reference.
+7. AI responds with text and can optionally call the `point` tool to indicate an element on screen by its `@ID` from the DOM snapshot
+8. Response is spoken in the browser or on the server based on `speech.mode`,
+    and can either wait for the full response or stream sentence-by-sentence
+    based on `speech.allowStreaming`
+9. If the AI calls the point tool, the cursor animates to the target element's current position (it resolves the element from the snapshot registry and computes its center point)
+10. **If user presses hotkey again at any point, current response is interrupted**
+
+## DOM Snapshot
+
+The DOM snapshot is a token-efficient representation of the visible page structure that gives the AI context about what's on screen.
+
+When the user holds the hotkey, cursor-buddy traverses the visible DOM and builds a lightweight text representation. Each interactive or meaningful element is assigned a unique `@ID` that the AI can reference when pointing.
+
+- **Enables pointing** — The AI can say "click the submit button @42" and the cursor will animate to that exact element
+- **Token efficient** — Only visible, relevant elements are included (no hidden elements, scripts, or styles)
+- **Semantic context** — The AI understands the page structure, not just pixels from the screenshot
+
+For a simple login form, the snapshot might look like:
+
+```
+# viewport 1280x720
+@20 body "Sign In Email Password Sign In Forgot password?" [x=0 y=0 w=1280 h=720]
+  @19 main "Sign In Email Password Sign In Forgot password?" [x=440 y=200 w=400 h=320]
+    @18 form "Sign In Email Password Sign In Forgot password?" [x=440 y=200 w=400 h=320]
+      @1 h1 "Sign In" [x=580 y=220 w=120 h=32]
+      @4 div "Email" [x=460 y=270 w=360 h=56]
+        @2 label "Email" [x=460 y=270 w=40 h=20]
+        @3 input [type="email"] [placeholder="Enter your email"] [x=460 y=294 w=360 h=32]
+      @7 div "Password" [x=460 y=340 w=360 h=56]
+        @5 label "Password" [x=460 y=340 w=64 h=20]
+        @6 input [type="password"] [placeholder="Enter your password"] [x=460 y=364 w=360 h=32]
+      @8 button "Sign In" [type="submit"] [x=460 y=420 w=360 h=40]
+      @9 a "Forgot password?" [href="/forgot"] [x=540 y=476 w=120 h=20]
+```
+
+Each line contains: `@ID tag "text content" [attributes] [bounding box]`
+
+The AI sees this alongside the screenshot. When it wants to guide the user to enter their email, it can call `point(@3)` and the cursor will animate to that input field.
+
+### What Gets Captured
+
+| Included | Excluded |
+|----------|----------|
+| Visible elements in viewport | Hidden elements (`display: none`, `visibility: hidden`) |
+| Interactive elements (buttons, inputs, links) | Script and style tags |
+| Text content (truncated if long) | Elements outside viewport |
+| Element attributes (type, placeholder, href) | Inline styles and classes |
+| Semantic structure | Comment nodes |
 
 ## Server Configuration
 
@@ -230,9 +319,6 @@ When the AI uses tools (like web search), bubbles appear near the cursor showing
 | `failed` | Execution failed |
 
 ### Approval Keyboard Shortcuts
-
-<img width="374" height="200" alt="Screenshot 2026-04-18 at 14 37 42" src="https://github.com/user-attachments/assets/66f2775b-afb4-4f43-b141-0e748ec0fe81" />
-
 
 When a tool requires approval, use these keyboard shortcuts:
 
@@ -471,21 +557,6 @@ client.stopListening()
 | `ToolCallStatus` | `"pending" \| "awaiting_approval" \| "approved" \| "denied" \| "completed" \| "failed"` |
 | `ToolDisplayConfig` | Configuration for tool display |
 | `ToolDisplayOptions` | Options for a single tool |
-
-## How It Works
-
-1. User holds the hotkey
-2. Microphone captures audio, waveform shows audio level, and browser speech recognition starts when available
-3. At the same time, a screenshot and token-efficient DOM snapshot of the viewport are captured in the background. This runs in parallel with speech capture to minimize latency
-4. User releases hotkey
-5. The client prefers the browser transcript; if it is unavailable or empty in `auto` mode, the recorded audio is transcribed on the server
-6. The already-captured screenshot + DOM snapshot are sent to the AI model. Each element has an `@ID` (e.g., `@12`) that the AI can reference.
-7. AI responds with text and can optionally call the `point` tool to indicate an element on screen by its `@ID` from the DOM snapshot
-8. Response is spoken in the browser or on the server based on `speech.mode`,
-    and can either wait for the full response or stream sentence-by-sentence
-    based on `speech.allowStreaming`
-9. If the AI calls the point tool, the cursor animates to the target element's current position (it resolves the element from the snapshot registry and computes its center point)
-10. **If user presses hotkey again at any point, current response is interrupted**
 
 ## Security Best Practices
 
