@@ -229,6 +229,17 @@ When the AI uses tools (like web search), bubbles appear near the cursor showing
 | `completed` | Finished successfully |
 | `failed` | Execution failed |
 
+### Approval Keyboard Shortcuts
+
+When a tool requires approval, use these keyboard shortcuts:
+
+| Key | Action |
+|-----|--------|
+| **Y** or **Enter** | Approve the tool call |
+| **N** or **Escape** | Deny the tool call |
+
+Shortcuts are automatically enabled when a tool is awaiting approval and disabled otherwise. They are ignored when focus is in an input field or textarea.
+
 ## Customization
 
 ### CSS Variables
