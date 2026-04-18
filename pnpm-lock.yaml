@@ -80,7 +80,7 @@ importers:
         version: 1.1.0(nanostores@1.2.0)(react@19.2.5)
       ai:
         specifier: ^6.0.158
-        version: 6.0.158(zod@3.25.76)
+        version: 6.0.158(zod@4.3.6)
       html2canvas-pro:
         specifier: ^2.0.2
         version: 2.0.2
@@ -88,8 +88,8 @@ importers:
         specifier: ^1.2.0
         version: 1.2.0
       zod:
-        specifier: ^3.24.0
-        version: 3.25.76
+        specifier: ^4.3.6
+        version: 4.3.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.8
@@ -100,6 +100,9 @@ importers:
       happy-dom:
         specifier: ^20.9.0
         version: 20.9.0
+      lightningcss:
+        specifier: ^1.32.0
+        version: 1.32.0
       react:
         specifier: ^19.0.0
         version: 19.2.5
@@ -1611,33 +1614,23 @@ packages:
       utf-8-validate:
         optional: true
 
-  zod@3.25.76:
-    resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
-
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
 
-  '@ai-sdk/gateway@3.0.95(zod@3.25.76)':
+  '@ai-sdk/gateway@3.0.95(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.23(zod@3.25.76)
+      '@ai-sdk/provider-utils': 4.0.23(zod@4.3.6)
       '@vercel/oidc': 3.1.0
-      zod: 3.25.76
+      zod: 4.3.6
 
   '@ai-sdk/openai@3.0.52(zod@4.3.6)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
       '@ai-sdk/provider-utils': 4.0.23(zod@4.3.6)
       zod: 4.3.6
-
-  '@ai-sdk/provider-utils@4.0.23(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider': 3.0.8
-      '@standard-schema/spec': 1.1.0
-      eventsource-parser: 3.0.6
-      zod: 3.25.76
 
   '@ai-sdk/provider-utils@4.0.23(zod@4.3.6)':
     dependencies:
@@ -2258,13 +2251,13 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
-  ai@6.0.158(zod@3.25.76):
+  ai@6.0.158(zod@4.3.6):
     dependencies:
-      '@ai-sdk/gateway': 3.0.95(zod@3.25.76)
+      '@ai-sdk/gateway': 3.0.95(zod@4.3.6)
       '@ai-sdk/provider': 3.0.8
-      '@ai-sdk/provider-utils': 4.0.23(zod@3.25.76)
+      '@ai-sdk/provider-utils': 4.0.23(zod@4.3.6)
       '@opentelemetry/api': 1.9.0
-      zod: 3.25.76
+      zod: 4.3.6
 
   ansis@4.2.0: {}
 
@@ -2846,7 +2839,5 @@ snapshots:
       stackback: 0.0.2
 
   ws@8.20.0: {}
-
-  zod@3.25.76: {}
 
   zod@4.3.6: {}

@@ -3,6 +3,7 @@
 import { useStore } from "@nanostores/react"
 import { useCallback, useSyncExternalStore } from "react"
 import { $audioLevel } from "../core/atoms"
+import type { ToolCallState } from "../core/tools"
 import type { VoiceState } from "../core/types"
 import { useClient } from "./provider"
 
@@ -13,7 +14,7 @@ export interface UseCursorBuddyReturn {
   liveTranscript: string
   /** Latest transcribed user speech */
   transcript: string
-  /** Latest AI response (stripped of POINT tags) */
+  /** Latest AI response */
   response: string
   /** Current audio level (0-1) */
   audioLevel: number
@@ -24,6 +25,15 @@ export interface UseCursorBuddyReturn {
   /** Current error (null if none) */
   error: Error | null
 
+  // Tool state
+  /** All tool calls in current turn */
+  toolCalls: ToolCallState[]
+  /** Visible, non-expired tool calls */
+  activeToolCalls: ToolCallState[]
+  /** Tool awaiting user approval, or null */
+  pendingApproval: ToolCallState | null
+
+  // Actions
   /** Start listening (called automatically by hotkey) */
   startListening: () => void
   /** Stop listening and process (called automatically by hotkey release) */
@@ -36,6 +46,14 @@ export interface UseCursorBuddyReturn {
   dismissPointing: () => void
   /** Reset to idle state */
   reset: () => void
+
+  // Tool actions
+  /** Approve a pending tool call */
+  approveToolCall: (id: string) => void
+  /** Deny a pending tool call */
+  denyToolCall: (id: string) => void
+  /** Dismiss a tool call bubble manually */
+  dismissToolCall: (id: string) => void
 }
 
 /**
@@ -69,5 +87,19 @@ export function useCursorBuddy(): UseCursorBuddyReturn {
     ),
     dismissPointing: useCallback(() => client.dismissPointing(), [client]),
     reset: useCallback(() => client.reset(), [client]),
+
+    // Tool actions
+    approveToolCall: useCallback(
+      (id: string) => client.approveToolCall(id),
+      [client],
+    ),
+    denyToolCall: useCallback(
+      (id: string) => client.denyToolCall(id),
+      [client],
+    ),
+    dismissToolCall: useCallback(
+      (id: string) => client.dismissToolCall(id),
+      [client],
+    ),
   }
 }

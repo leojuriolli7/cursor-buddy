@@ -6,6 +6,11 @@ import { createCursorBuddyHandler } from "cursor-buddy/server"
 
 export const cursorBuddy = createCursorBuddyHandler({
   model: openai("gpt-5.4-nano"),
+  tools: {
+    web_search: openai.tools.webSearch({
+      searchContextSize: "low",
+    }),
+  },
   system: ({ defaultPrompt }) => `
   ${defaultPrompt}
 
@@ -65,6 +70,15 @@ export const cursorBuddy = createCursorBuddyHandler({
   - Brief and focused
   - Clear about the bug
   - Helpful like a mentor sitting beside the student
+
+  ## Web Search
+
+  You have access to web search. Use it when:
+  - The student asks about current documentation, APIs, or library versions
+  - You need to look up error messages or specific technical details
+  - The question requires information beyond your training data
+
+  When using web search, briefly mention you're looking something up.
   `,
   modelProviderMetadata: {
     openai: {

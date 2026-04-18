@@ -15,6 +15,7 @@ Customize its prompt, pass custom tools, choose between browser or server-side s
 - **DOM snapshot context** — AI sees a token-efficient representation of your visible page structure
 - **Voice responses** — Browser or server TTS, with optional streaming playback
 - **Cursor pointing** — AI can point at UI elements it references
+- **Tool call bubbles** — Visual feedback for tool execution with customizable display
 - **Voice interruption** — Start talking again to cut off current response
 - **Framework agnostic** — Core client written in Typescript, adapter-based architecture
 - **Customizable** — CSS variables, custom components, headless mode
@@ -136,12 +137,22 @@ createCursorBuddyHandler({
   speechBubble={(props) => <CustomBubble {...props} />}
   waveform={(props) => <CustomWaveform {...props} />}
 
+  // Tool display configuration
+  toolDisplay={{
+    "*": { minDisplayTime: 1500 },           // Default for all tools
+    web_search: { label: "Searching..." },   // Custom label
+    internal_tool: { mode: "hidden" },       // Hide from UI
+  }}
+  renderToolBubble={(props) => <CustomToolBubble {...props} />}
+
   // Callbacks
   onTranscript={(text) => {}}    // Called when speech is transcribed
   onResponse={(text) => {}}      // Called when AI responds
   onPoint={(target) => {}}       // Called when AI points at element
   onStateChange={(state) => {}}  // Called on state change
   onError={(error) => {}}        // Called on error
+  onToolCall={(event) => {}}     // Called when a tool is invoked
+  onToolResult={(event) => {}}   // Called when a tool completes
 />
 ```
 
@@ -170,6 +181,54 @@ createCursorBuddyHandler({
 - `speech.allowStreaming: true` — Speak completed sentence segments as the chat
   stream arrives.
 
+## Tool Display
+
+When the AI uses tools (like web search), bubbles appear near the cursor showing the tool's status. Configure how tools are displayed:
+
+```tsx
+<CursorBuddy
+  endpoint="/api/cursor-buddy"
+  toolDisplay={{
+    // Default settings for all tools
+    "*": {
+      minDisplayTime: 1500,  // Minimum time to show bubble (ms)
+    },
+
+    // Per-tool configuration
+    web_search: {
+      label: "Searching the web...",  // Static label
+      // Or dynamic label based on status:
+      // label: (args, status) => status === "completed" ? "Found results" : "Searching..."
+    },
+
+    // Hide internal tools from UI
+    internal_logging: {
+      mode: "hidden",
+    },
+
+    // Custom render for specific tool
+    data_fetch: {
+      render: (props) => (
+        <div className="my-custom-bubble">
+          {props.status === "pending" ? "Loading..." : "Done!"}
+        </div>
+      ),
+    },
+  }}
+/>
+```
+
+### Tool Call States
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Tool called, waiting for result |
+| `awaiting_approval` | Needs user consent (for tools with `needsApproval`) |
+| `approved` | User approved, executing |
+| `denied` | User denied the tool call |
+| `completed` | Finished successfully |
+| `failed` | Execution failed |
+
 ## Customization
 
 ### CSS Variables
@@ -192,6 +251,14 @@ Cursor buddy styles are customizable via CSS variables. Override them in your st
 
   /* Waveform */
   --cursor-buddy-waveform-color: #ef4444;
+
+  /* Tool bubbles */
+  --cursor-buddy-tool-bg: #ffffff;
+  --cursor-buddy-tool-text: #1f2937;
+  --cursor-buddy-tool-pending: #3b82f6;
+  --cursor-buddy-tool-approval: #f59e0b;
+  --cursor-buddy-tool-success: #22c55e;
+  --cursor-buddy-tool-error: #ef4444;
 }
 ```
 
@@ -245,6 +312,11 @@ function MyCustomUI() {
     isPointing,
     error,
 
+    // Tool state
+    toolCalls,       // All tool calls in current turn
+    activeToolCalls, // Visible, non-expired tool calls
+    pendingApproval, // Tool awaiting user approval, or null
+
     // Actions
     startListening,
     stopListening,
@@ -252,6 +324,11 @@ function MyCustomUI() {
     pointAt,         // Manually point at coordinates
     dismissPointing,
     reset,
+
+    // Tool actions
+    approveToolCall, // Approve a pending tool call
+    denyToolCall,    // Deny a pending tool call
+    dismissToolCall, // Dismiss a tool call bubble
   } = useCursorBuddy()
 
   return (
@@ -264,6 +341,19 @@ function MyCustomUI() {
       >
         Hold to speak
       </button>
+
+      {/* Render active tool calls */}
+      {activeToolCalls.map((tool) => (
+        <div key={tool.id}>
+          {tool.label}
+          {tool.status === "awaiting_approval" && (
+            <>
+              <button onClick={() => approveToolCall(tool.id)}>Yes</button>
+              <button onClick={() => denyToolCall(tool.id)}>No</button>
+            </>
+          )}
+        </div>
+      ))}
     </div>
   )
 }
@@ -362,6 +452,11 @@ client.stopListening()
 | `CursorRenderProps` | Props passed to custom cursor |
 | `SpeechBubbleRenderProps` | Props passed to custom speech bubble |
 | `WaveformRenderProps` | Props passed to custom waveform |
+| `ToolBubbleRenderProps` | Props passed to custom tool bubble |
+| `ToolCallState` | State of a tool call |
+| `ToolCallStatus` | `"pending" \| "awaiting_approval" \| "approved" \| "denied" \| "completed" \| "failed"` |
+| `ToolDisplayConfig` | Configuration for tool display |
+| `ToolDisplayOptions` | Options for a single tool |
 
 ## How It Works
 
@@ -407,13 +502,7 @@ export async function POST(request: Request) {
 
   return handler(request)
 }
-
-export const GET = POST
 ```
-
-## TODOs
-
-- [ ] Medium: Proper test structure without relying on `as any` for audio and voice capture
 
 ## License
 

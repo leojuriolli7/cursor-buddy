@@ -285,16 +285,16 @@ describe("CursorBuddyClient", () => {
       client.startListening()
       await client.stopListening()
 
-      // Should report screenshot error with the original error details
+      // Should report screenshot error
       expect(onError).toHaveBeenCalledWith(
         expect.objectContaining({
-          message: "Failed to capture screenshot: screenshot failed",
+          message: "screenshot failed",
         }),
       )
       expect(client.getSnapshot()).toMatchObject({
         state: "idle",
         error: expect.objectContaining({
-          message: "Failed to capture screenshot: screenshot failed",
+          message: "screenshot failed",
         }),
       })
       // No chat request should be made
@@ -392,13 +392,12 @@ describe("CursorBuddyClient", () => {
 
       const chatPayload = readJsonRequestBody(fetchMock, 1)
       expect(chatPayload).toEqual({
+        messages: [{ role: "user", content: "Open the save menu" }],
         screenshot: defaultScreenshotResult.imageData,
         capture: {
           width: defaultScreenshotResult.width,
           height: defaultScreenshotResult.height,
         },
-        transcript: "Open the save menu",
-        history: [],
         domSnapshot: defaultScreenshotResult.domSnapshot,
       })
 
@@ -1056,11 +1055,8 @@ describe("CursorBuddyClient", () => {
       ttsDeferred.resolve(new Blob(["audio"], { type: "audio/mpeg" }))
       await stopPromise
 
-      // History should contain the partial turn (response stripped of POINT tag)
-      expect($conversationHistory.get()).toEqual([
-        { role: "user", content: "What is this button?" },
-        { role: "assistant", content: "This is the submit button" },
-      ])
+      // History should NOT be committed when interrupted mid-turn
+      expect($conversationHistory.get()).toEqual([])
     })
 
     it("does not double-commit history when interrupted after completion", async () => {
@@ -1109,6 +1105,9 @@ describe("CursorBuddyClient", () => {
         error: null,
         isPointing: false,
         isEnabled: true,
+        toolCalls: [],
+        activeToolCalls: [],
+        pendingApproval: null,
       })
     })
 

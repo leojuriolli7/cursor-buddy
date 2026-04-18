@@ -13,6 +13,6 @@ export type {
   VoiceEvent,
   VoiceState,
 } from "./core/types"
-export type { PointToolInput } from "./shared/point-tool"
+export type { PointToolInput } from "./core/tools/point-tool"
 // Point tool for type-safe access to pointing arguments
-export { pointTool } from "./shared/point-tool"
+export { pointTool } from "./core/tools/point-tool"

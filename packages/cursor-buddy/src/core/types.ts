@@ -54,11 +54,20 @@ export interface ScreenshotResult {
 }
 
 /**
- * Conversation message
+ * Tool approval response content
+ */
+export interface ToolApprovalResponseContent {
+  type: "tool-approval-response"
+  approvalId: string
+  approved: boolean
+}
+
+/**
+ * Conversation message with support for tool approval responses
  */
 export interface ConversationMessage {
-  role: "user" | "assistant"
-  content: string
+  role: "user" | "assistant" | "tool"
+  content: string | ToolApprovalResponseContent[]
 }
 
 /**
@@ -235,6 +244,11 @@ export interface CursorBuddyClientOptions {
    * `{ mode: "server", allowStreaming: false }`.
    */
   speech?: CursorBuddySpeechConfig
+  /**
+   * Tool display configuration.
+   * Use "*" key for default options applied to all tools.
+   */
+  toolDisplay?: import("./tools/types").ToolDisplayConfig
   /** Callback when transcript is ready */
   onTranscript?: (text: string) => void
   /** Callback when AI responds */
@@ -245,6 +259,10 @@ export interface CursorBuddyClientOptions {
   onStateChange?: (state: VoiceState) => void
   /** Callback when error occurs */
   onError?: (error: Error) => void
+  /** Callback when a tool is called */
+  onToolCall?: (event: import("./tools/types").ToolCallEvent) => void
+  /** Callback when a tool completes */
+  onToolResult?: (event: import("./tools/types").ToolResultEvent) => void
 }
 
 /**
@@ -268,4 +286,10 @@ export interface CursorBuddySnapshot {
   isPointing: boolean
   /** Whether the buddy is enabled */
   isEnabled: boolean
+  /** All tool calls in current turn */
+  toolCalls: import("./tools/types").ToolCallState[]
+  /** Visible, non-expired tool calls */
+  activeToolCalls: import("./tools/types").ToolCallState[]
+  /** Tool awaiting user approval, or null */
+  pendingApproval: import("./tools/types").ToolCallState | null
 }

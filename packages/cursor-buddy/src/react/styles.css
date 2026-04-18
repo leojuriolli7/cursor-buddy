@@ -192,3 +192,194 @@
     opacity: 0;
   }
 }
+
+:root {
+  /* Tool bubble colors */
+  --cursor-buddy-tool-bg: #ffffff;
+  --cursor-buddy-tool-text: #1f2937;
+  --cursor-buddy-tool-border: #e5e7eb;
+  --cursor-buddy-tool-radius: 8px;
+  --cursor-buddy-tool-padding: 8px 12px;
+  --cursor-buddy-tool-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  --cursor-buddy-tool-gap: 8px;
+
+  /* Tool status colors */
+  --cursor-buddy-tool-pending: #3b82f6;
+  --cursor-buddy-tool-approval: #f59e0b;
+  --cursor-buddy-tool-success: #22c55e;
+  --cursor-buddy-tool-error: #ef4444;
+  --cursor-buddy-tool-denied: #6b7280;
+
+  /* Tool button colors */
+  --cursor-buddy-tool-btn-approve-bg: #22c55e;
+  --cursor-buddy-tool-btn-approve-text: #ffffff;
+  --cursor-buddy-tool-btn-deny-bg: #ef4444;
+  --cursor-buddy-tool-btn-deny-text: #ffffff;
+}
+
+/* Tool bubble stack container */
+.cursor-buddy-tool-stack {
+  position: absolute;
+  left: 24px;
+  top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cursor-buddy-tool-gap);
+  pointer-events: auto;
+}
+
+.cursor-buddy-tool-stack__item {
+  animation: cursor-buddy-fade-in var(--cursor-buddy-animation-duration)
+    ease-out;
+}
+
+/* Individual tool bubble */
+.cursor-buddy-tool-bubble {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--cursor-buddy-tool-padding);
+  background-color: var(--cursor-buddy-tool-bg);
+  color: var(--cursor-buddy-tool-text);
+  border-radius: var(--cursor-buddy-tool-radius);
+  box-shadow: var(--cursor-buddy-tool-shadow);
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
+  user-select: none;
+  border-left: 3px solid var(--cursor-buddy-tool-pending);
+}
+
+.cursor-buddy-tool-bubble--pending,
+.cursor-buddy-tool-bubble--approved {
+  border-left-color: var(--cursor-buddy-tool-pending);
+}
+
+.cursor-buddy-tool-bubble--awaiting_approval {
+  border-left-color: var(--cursor-buddy-tool-approval);
+}
+
+.cursor-buddy-tool-bubble--completed {
+  border-left-color: var(--cursor-buddy-tool-success);
+}
+
+.cursor-buddy-tool-bubble--failed {
+  border-left-color: var(--cursor-buddy-tool-error);
+}
+
+.cursor-buddy-tool-bubble--denied {
+  border-left-color: var(--cursor-buddy-tool-denied);
+}
+
+/* Tool bubble content */
+.cursor-buddy-tool-bubble__content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cursor-buddy-tool-bubble__label {
+  font-weight: 500;
+}
+
+/* Tool status icons */
+.cursor-buddy-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.cursor-buddy-tool-icon--spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--cursor-buddy-tool-pending);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: cursor-buddy-tool-spin 0.8s linear infinite;
+}
+
+@keyframes cursor-buddy-tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.cursor-buddy-tool-icon--check {
+  color: var(--cursor-buddy-tool-success);
+}
+
+.cursor-buddy-tool-icon--error {
+  color: var(--cursor-buddy-tool-error);
+}
+
+.cursor-buddy-tool-icon--denied {
+  color: var(--cursor-buddy-tool-denied);
+}
+
+.cursor-buddy-tool-icon--question {
+  color: var(--cursor-buddy-tool-approval);
+}
+
+/* Tool action buttons */
+.cursor-buddy-tool-bubble__actions {
+  display: flex;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.cursor-buddy-tool-button {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.cursor-buddy-tool-button:hover {
+  opacity: 0.9;
+}
+
+.cursor-buddy-tool-button:active {
+  opacity: 0.8;
+}
+
+.cursor-buddy-tool-button--approve {
+  background-color: var(--cursor-buddy-tool-btn-approve-bg);
+  color: var(--cursor-buddy-tool-btn-approve-text);
+}
+
+.cursor-buddy-tool-button--deny {
+  background-color: var(--cursor-buddy-tool-btn-deny-bg);
+  color: var(--cursor-buddy-tool-btn-deny-text);
+}
+
+/* Dismiss button */
+.cursor-buddy-tool-bubble__dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background-color: transparent;
+  color: #9ca3af;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.cursor-buddy-tool-bubble__dismiss:hover {
+  background-color: #f3f4f6;
+  color: #6b7280;
+}

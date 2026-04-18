@@ -45,12 +45,29 @@ export interface CursorBuddyHandler {
   config: CursorBuddyHandlerConfig
 }
 
+import type {
+  ConversationMessage,
+  ToolApprovalResponseContent,
+} from "../core/types"
+
+// Re-export for convenience
+export type { ConversationMessage, ToolApprovalResponseContent }
+
 /**
  * Chat request body
  */
 export interface ChatRequestBody {
-  /** Base64-encoded screenshot of the viewport */
-  screenshot: string
+  /**
+   * Full conversation history including current user message.
+   * Replaces separate `transcript` and `history` fields.
+   */
+  messages: ConversationMessage[]
+
+  /**
+   * Base64-encoded screenshot of the viewport.
+   * Included for new turns and approval continuations.
+   */
+  screenshot?: string
 
   /** Metadata describing how the screenshot maps back to the live viewport */
   capture?: {
@@ -59,12 +76,6 @@ export interface ChatRequestBody {
     /** Screenshot image height in pixels */
     height: number
   }
-
-  /** Transcribed user speech */
-  transcript: string
-
-  /** Previous conversation messages */
-  history: Array<{ role: "user" | "assistant"; content: string }>
 
   /** Token-efficient DOM snapshot showing visible page structure with @X element IDs */
   domSnapshot?: string

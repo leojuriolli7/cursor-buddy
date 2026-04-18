@@ -1,6 +1,11 @@
 "use client"
 
 import type {
+  ToolCallEvent,
+  ToolDisplayConfig,
+  ToolResultEvent,
+} from "../../core/tools"
+import type {
   CursorBuddySpeechConfig,
   CursorBuddyTranscriptionConfig,
   PointingTarget,
@@ -12,7 +17,10 @@ import { useHotkey } from "../use-hotkey"
 import { Overlay, type OverlayProps } from "./Overlay"
 
 export interface CursorBuddyProps
-  extends Pick<OverlayProps, "cursor" | "speechBubble" | "waveform"> {
+  extends Pick<
+    OverlayProps,
+    "cursor" | "speechBubble" | "waveform" | "toolDisplay" | "renderToolBubble"
+  > {
   /** API endpoint for cursor buddy server */
   endpoint: string
   /** Hotkey for push-to-talk (default: "ctrl+alt") */
@@ -33,6 +41,10 @@ export interface CursorBuddyProps
   onStateChange?: (state: VoiceState) => void
   /** Callback when error occurs */
   onError?: (error: Error) => void
+  /** Callback when a tool is called */
+  onToolCall?: (event: ToolCallEvent) => void
+  /** Callback when a tool completes */
+  onToolResult?: (event: ToolResultEvent) => void
 }
 
 /**
@@ -43,10 +55,18 @@ function CursorBuddyInner({
   cursor,
   speechBubble,
   waveform,
+  toolDisplay,
+  renderToolBubble,
   container,
 }: Pick<
   CursorBuddyProps,
-  "hotkey" | "cursor" | "speechBubble" | "waveform" | "container"
+  | "hotkey"
+  | "cursor"
+  | "speechBubble"
+  | "waveform"
+  | "toolDisplay"
+  | "renderToolBubble"
+  | "container"
 >) {
   const { startListening, stopListening, isEnabled } = useCursorBuddy()
 
@@ -58,6 +78,8 @@ function CursorBuddyInner({
       cursor={cursor}
       speechBubble={speechBubble}
       waveform={waveform}
+      toolDisplay={toolDisplay}
+      renderToolBubble={renderToolBubble}
       container={container}
     />
   )
@@ -95,28 +117,37 @@ export function CursorBuddy({
   cursor,
   speechBubble,
   waveform,
+  toolDisplay,
+  renderToolBubble,
   onTranscript,
   onResponse,
   onPoint,
   onStateChange,
   onError,
+  onToolCall,
+  onToolResult,
 }: CursorBuddyProps) {
   return (
     <CursorBuddyProvider
       endpoint={endpoint}
       speech={speech}
       transcription={transcription}
+      toolDisplay={toolDisplay}
       onTranscript={onTranscript}
       onResponse={onResponse}
       onPoint={onPoint}
       onStateChange={onStateChange}
       onError={onError}
+      onToolCall={onToolCall}
+      onToolResult={onToolResult}
     >
       <CursorBuddyInner
         hotkey={hotkey}
         cursor={cursor}
         speechBubble={speechBubble}
         waveform={waveform}
+        toolDisplay={toolDisplay}
+        renderToolBubble={renderToolBubble}
         container={container}
       />
     </CursorBuddyProvider>

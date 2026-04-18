@@ -1,4 +1,4 @@
-import type { PointToolInput } from "../shared/point-tool"
+import type { PointToolInput } from "./tools/point-tool"
 import { $audioLevel, $conversationHistory, $isEnabled } from "./atoms"
 import { AudioPlaybackService } from "./services/audio-playback"
 import { BrowserSpeechService } from "./services/browser-speech"
@@ -11,6 +11,8 @@ import {
 } from "./services/tts-playback-queue"
 import { VoiceCaptureService } from "./services/voice-capture"
 import { createStateMachine, type StateMachine } from "./state-machine"
+import { StreamProcessor } from "./stream"
+import { ToolCallManager } from "./tools"
 import type {
   AudioPlaybackPort,
   BrowserSpeechPort,
@@ -27,28 +29,22 @@ import type {
   VoiceCapturePort,
 } from "./types"
 import { toError } from "./utils/error"
-import { ProgressiveResponseProcessor } from "./utils/response-processor"
 
 async function readErrorMessage(
   response: Response,
   fallbackMessage: string,
 ): Promise<string> {
   try {
-    // Prefer structured JSON errors from our handlers, but degrade gracefully
-    // to plain text if the route returns a different payload.
     const contentType = response.headers.get("Content-Type") ?? ""
-
     if (contentType.includes("application/json")) {
       const body = (await response.json()) as { error?: string }
       if (body?.error) return body.error
     }
-
     const text = await response.text()
     if (text) return text
   } catch {
-    // Fall back to the generic message when the response body cannot be read.
+    // Fall back to the generic message
   }
-
   return fallbackMessage
 }
 
@@ -60,8 +56,10 @@ export type { CursorBuddyServices } from "./types"
  * Manages the complete voice interaction flow:
  * idle -> listening -> processing -> responding -> idle
  *
- * Supports interruption: pressing hotkey during any state aborts
- * in-flight work and immediately transitions to listening.
+ * Supports:
+ * - Interruption via hotkey
+ * - Tool call display with approval flow
+ * - Point tool for cursor movement
  */
 export class CursorBuddyClient {
   private endpoint: string
@@ -75,6 +73,7 @@ export class CursorBuddyClient {
   private screenCapture: ScreenCapturePort
   private pointerController: PointerControllerPort
   private stateMachine: StateMachine
+  private toolManager: ToolCallManager
 
   // State
   private liveTranscript = ""
@@ -82,11 +81,13 @@ export class CursorBuddyClient {
   private response = ""
   private error: Error | null = null
   private abortController: AbortController | null = null
-  private historyCommittedForTurn = false
   private speechProviderForTurn: "browser" | "server" | null = null
   private screenshotPromise: Promise<ScreenshotResult> | null = null
+  private currentScreenshot: ScreenshotResult | null = null
+  private pendingApprovalResolver: ((approved: boolean) => void) | null = null
+  private playbackQueue: TTSPlaybackQueue | null = null
 
-  // Cached snapshot for useSyncExternalStore (must be referentially stable)
+  // Cached snapshot for useSyncExternalStore
   private cachedSnapshot: CursorBuddySnapshot
 
   // Subscriptions
@@ -100,7 +101,7 @@ export class CursorBuddyClient {
     this.endpoint = endpoint
     this.options = options
 
-    // Initialize services (allow injection for testing)
+    // Initialize services
     this.voiceCapture = services.voiceCapture ?? new VoiceCaptureService()
     this.audioPlayback = services.audioPlayback ?? new AudioPlaybackService()
     this.browserSpeech = services.browserSpeech ?? new BrowserSpeechService()
@@ -111,10 +112,21 @@ export class CursorBuddyClient {
       services.pointerController ?? new PointerController()
     this.stateMachine = createStateMachine()
 
+    // Initialize tool manager
+    this.toolManager = new ToolCallManager(
+      {
+        onChange: () => this.notify(),
+        onApprovalResponse: async () => {
+          // Approvals are handled via pendingApprovalResolver
+        },
+      },
+      options.toolDisplay,
+    )
+
     // Initialize cached snapshot
     this.cachedSnapshot = this.buildSnapshot()
 
-    // Wire up audio level to atom
+    // Wire up audio level
     this.voiceCapture.onLevel((level) => $audioLevel.set(level))
     this.liveTranscription.onPartial((text) => {
       if (this.liveTranscript === text) return
@@ -134,47 +146,38 @@ export class CursorBuddyClient {
 
   // === Public API ===
 
-  /**
-   * Start listening for voice input.
-   * Aborts any in-flight work from previous session.
-   */
   startListening(): void {
-    // 1. Abort previous session synchronously
     this.abort()
 
-    // 2. Clear UI state immediately
+    // Clear UI state
     this.liveTranscript = ""
     this.transcript = ""
     this.response = ""
     this.error = null
-    this.historyCommittedForTurn = false
     this.speechProviderForTurn = null
+    this.currentScreenshot = null
     this.pointerController.release()
+    this.toolManager.reset()
 
-    // 3. Transition state
+    // Transition state
     this.stateMachine.transition({ type: "HOTKEY_PRESSED" })
     this.notify()
 
-    // 4. Start mic (async, errors go to error state)
+    // Start mic
     this.abortController = new AbortController()
     const signal = this.abortController.signal
 
-    // 5. Screenshot is captured in parallel with voice input to reduce latency
+    // Capture screenshot in parallel
     this.screenshotPromise = this.screenCapture.capture()
 
-    // 6. Start mic (async, errors go to error state)
     this.beginListeningSession(signal).catch((error) => {
       if (signal.aborted) return
-
       this.voiceCapture.dispose()
       this.liveTranscription.dispose()
       this.handleError(toError(error, "Failed to start listening"))
     })
   }
 
-  /**
-   * Stop listening and process the voice input.
-   */
   async stopListening(): Promise<void> {
     if (this.stateMachine.getState() !== "listening") return
 
@@ -184,7 +187,6 @@ export class CursorBuddyClient {
 
     const failTurn = (error: Error) => {
       if (turnFailure || signal?.aborted) return
-
       turnFailure = error
       this.audioPlayback.stop()
       this.browserSpeech.stop()
@@ -197,24 +199,16 @@ export class CursorBuddyClient {
         this.stopLiveTranscription(),
       ])
 
-      let screenshot: ScreenshotResult
-      try {
-        if (!this.screenshotPromise) {
-          throw new Error("Screenshot was not started")
-        }
-        screenshot = await this.screenshotPromise
-      } catch (screenshotError) {
-        const errorMessage =
-          screenshotError instanceof Error
-            ? `Failed to capture screenshot: ${screenshotError.message}`
-            : "Failed to capture screenshot"
-        throw new Error(errorMessage)
+      // Get screenshot
+      if (!this.screenshotPromise) {
+        throw new Error("Screenshot was not started")
       }
+      this.currentScreenshot = await this.screenshotPromise
 
       if (turnFailure) throw turnFailure
       if (signal?.aborted) return
 
-      // Resolve transcript from browser or server fallback
+      // Resolve transcript
       const transcript = await this.resolveTranscript(
         browserTranscript,
         audioBlob,
@@ -230,55 +224,36 @@ export class CursorBuddyClient {
 
       this.prepareSpeechMode()
 
-      // Chat stream + progressive sentence TTS
-      const { cleanResponse, pointToolCall, playbackQueue } =
-        await this.chatAndSpeak(transcript, screenshot, signal, {
-          onFailure: failTurn,
-          onPlaybackStart: () => {
-            this.stateMachine.transition({ type: "RESPONSE_STARTED" })
-          },
-        })
-
-      if (turnFailure) throw turnFailure
-      if (signal?.aborted) return
-
-      this.options.onResponse?.(cleanResponse)
-
-      // Resolve pointing target from tool call using element ID
-      let pointTarget: PointingTarget | null = null
-
-      if (pointToolCall) {
-        // Look up element by ID from the DOM snapshot registry
-        const element = screenshot.elementRegistry.get(pointToolCall.elementId)
-        if (element) {
-          // Get current element center (element may have moved since snapshot)
-          const rect = element.getBoundingClientRect()
-          const x = Math.round(rect.left + rect.width / 2)
-          const y = Math.round(rect.top + rect.height / 2)
-          pointTarget = { x, y, label: pointToolCall.label }
-        }
-      }
-
-      // Point if we have a valid target
-      if (pointTarget) {
-        this.options.onPoint?.(pointTarget)
-        this.pointerController.pointAt(pointTarget)
-      }
-
-      await playbackQueue.waitForCompletion()
-
-      if (turnFailure) throw turnFailure
-      if (signal?.aborted) return
-
-      // Update history only after audio playback succeeds for the full turn
+      // Build initial messages
       const history = $conversationHistory.get()
-      const newHistory: ConversationMessage[] = [
+      const messages: ConversationMessage[] = [
         ...history,
         { role: "user", content: transcript },
-        { role: "assistant", content: cleanResponse },
       ]
-      $conversationHistory.set(newHistory)
-      this.historyCommittedForTurn = true
+
+      // Process chat with potential approval loop
+      const { responseText, updatedMessages } = await this.processChatLoop(
+        messages,
+        this.currentScreenshot,
+        signal,
+        failTurn,
+      )
+
+      if (turnFailure) throw turnFailure
+      if (signal?.aborted) return
+
+      this.options.onResponse?.(responseText)
+
+      // Wait for TTS to complete
+      if (this.playbackQueue) {
+        await this.playbackQueue.waitForCompletion()
+      }
+
+      if (turnFailure) throw turnFailure
+      if (signal?.aborted) return
+
+      // Update history
+      $conversationHistory.set(updatedMessages)
 
       this.stateMachine.transition({ type: "TTS_COMPLETE" })
     } catch (err) {
@@ -286,76 +261,71 @@ export class CursorBuddyClient {
         this.handleError(turnFailure)
         return
       }
-      // Interruption is not an error
       if (signal?.aborted) return
       this.handleError(toError(err))
     }
   }
 
-  /**
-   * Enable or disable the buddy.
-   */
   setEnabled(enabled: boolean): void {
     $isEnabled.set(enabled)
     this.notify()
   }
 
-  /**
-   * Manually point at coordinates.
-   */
   pointAt(x: number, y: number, label: string): void {
     this.pointerController.pointAt({ x, y, label })
   }
 
-  /**
-   * Dismiss the current pointing target.
-   */
   dismissPointing(): void {
     this.pointerController.release()
   }
 
-  /**
-   * Reset to idle state and stop any in-progress work.
-   */
   reset(): void {
     this.abort()
     this.liveTranscript = ""
     this.transcript = ""
     this.response = ""
     this.error = null
-    this.historyCommittedForTurn = false
+    this.currentScreenshot = null
     this.pointerController.release()
+    this.toolManager.reset()
     this.stateMachine.reset()
     this.notify()
   }
 
-  /**
-   * Update buddy position to follow cursor.
-   * Call this on cursor position changes.
-   */
   updateCursorPosition(): void {
     this.pointerController.updateFollowPosition()
   }
 
-  /**
-   * Subscribe to state changes.
-   */
+  // Tool actions
+  async approveToolCall(id: string): Promise<void> {
+    if (this.pendingApprovalResolver) {
+      this.pendingApprovalResolver(true)
+      this.pendingApprovalResolver = null
+    }
+    await this.toolManager.approve(id)
+  }
+
+  async denyToolCall(id: string): Promise<void> {
+    if (this.pendingApprovalResolver) {
+      this.pendingApprovalResolver(false)
+      this.pendingApprovalResolver = null
+    }
+    await this.toolManager.deny(id)
+  }
+
+  dismissToolCall(id: string): void {
+    this.toolManager.dismiss(id)
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
   }
 
-  /**
-   * Get current state snapshot for React's useSyncExternalStore.
-   * Returns a cached object to ensure referential stability.
-   */
   getSnapshot(): CursorBuddySnapshot {
     return this.cachedSnapshot
   }
 
-  /**
-   * Build a new snapshot object.
-   */
   private buildSnapshot(): CursorBuddySnapshot {
     return {
       state: this.stateMachine.getState(),
@@ -365,15 +335,15 @@ export class CursorBuddyClient {
       error: this.error,
       isPointing: this.pointerController.isPointing(),
       isEnabled: $isEnabled.get(),
+      toolCalls: this.toolManager.getToolCalls(),
+      activeToolCalls: this.toolManager.getActiveToolCalls(),
+      pendingApproval: this.toolManager.getPendingApproval(),
     }
   }
 
   // === Private Methods ===
 
   private abort(): void {
-    // Commit partial turn to history if interrupted mid-turn
-    this.commitPartialHistory()
-
     this.abortController?.abort()
     this.abortController = null
     this.screenshotPromise = null
@@ -382,27 +352,277 @@ export class CursorBuddyClient {
     this.audioPlayback.stop()
     this.browserSpeech.stop()
     this.speechProviderForTurn = null
-    // Reset audio level on abort
+    this.pendingApprovalResolver = null
+    this.toolManager.reset()
     $audioLevel.set(0)
   }
 
   /**
-   * Commit partial turn to history when interrupted.
-   * Only commits if we have both transcript and response,
-   * and haven't already committed for this turn.
+   * Process chat with approval loop.
+   * Returns when the turn is complete (no pending approvals).
    */
-  private commitPartialHistory(): void {
-    if (this.historyCommittedForTurn) return
-    if (!this.transcript || !this.response) return
+  private async processChatLoop(
+    messages: ConversationMessage[],
+    screenshot: ScreenshotResult,
+    signal: AbortSignal | undefined,
+    onFailure: (error: Error) => void,
+  ): Promise<{
+    responseText: string
+    updatedMessages: ConversationMessage[]
+  }> {
+    let currentMessages = [...messages]
+    let fullResponseText = ""
+    let hasStartedPlayback = false
 
-    const history = $conversationHistory.get()
-    const newHistory: ConversationMessage[] = [
-      ...history,
-      { role: "user", content: this.transcript },
-      { role: "assistant", content: this.response }, // already stripped of POINT tags
-    ]
-    $conversationHistory.set(newHistory)
-    this.historyCommittedForTurn = true
+    // Create playback queue
+    this.playbackQueue = new TTSPlaybackQueue({
+      onError: onFailure,
+      onPlaybackStart: () => {
+        if (!hasStartedPlayback) {
+          hasStartedPlayback = true
+          this.stateMachine.transition({ type: "RESPONSE_STARTED" })
+        }
+      },
+      prepare: (text, currentSignal) =>
+        this.prepareSpeechSegment(text, currentSignal),
+      signal,
+    })
+
+    const shouldStreamSpeech = this.isSpeechStreamingEnabled()
+
+    while (true) {
+      if (signal?.aborted) break
+
+      // Capture fresh screenshot for continuation requests
+      let currentScreenshot = screenshot
+      if (currentMessages.length > messages.length) {
+        // This is a continuation - capture fresh screenshot
+        currentScreenshot = await this.screenCapture.capture()
+      }
+
+      // Fetch chat stream
+      const response = await this.fetchChatStream(
+        currentMessages,
+        currentScreenshot,
+        signal,
+      )
+
+      // Process the stream
+      const { responseText, requiresApprovalContinuation, pendingApproval } =
+        await this.consumeStream(
+          response,
+          currentScreenshot,
+          shouldStreamSpeech,
+          signal,
+        )
+
+      fullResponseText = responseText
+      this.response = responseText
+      this.notify()
+
+      // Add assistant message to history
+      currentMessages = [
+        ...currentMessages,
+        { role: "assistant", content: responseText },
+      ]
+
+      if (!requiresApprovalContinuation || !pendingApproval) {
+        // No approval needed, turn complete
+        break
+      }
+
+      // Pause TTS for approval
+      this.playbackQueue.pauseAfterCurrent()
+
+      // Wait for user approval
+      const approved = await this.waitForApproval()
+
+      // Resume TTS
+      this.playbackQueue.resume()
+
+      // Add approval response to messages
+      currentMessages = [
+        ...currentMessages,
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-approval-response" as const,
+              approvalId: pendingApproval.approvalId,
+              approved,
+            },
+          ],
+        },
+      ]
+
+      // Continue the loop with updated messages
+    }
+
+    return {
+      responseText: fullResponseText,
+      updatedMessages: currentMessages,
+    }
+  }
+
+  private async fetchChatStream(
+    messages: ConversationMessage[],
+    screenshot: ScreenshotResult,
+    signal: AbortSignal | undefined,
+  ): Promise<Response> {
+    const response = await fetch(`${this.endpoint}/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        screenshot: screenshot.imageData,
+        capture: {
+          width: screenshot.width,
+          height: screenshot.height,
+        },
+        domSnapshot: screenshot.domSnapshot,
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response, "Chat request failed"))
+    }
+
+    return response
+  }
+
+  private async consumeStream(
+    response: Response,
+    screenshot: ScreenshotResult,
+    shouldStreamSpeech: boolean,
+    signal: AbortSignal | undefined,
+  ): Promise<{
+    responseText: string
+    requiresApprovalContinuation: boolean
+    pendingApproval?: {
+      approvalId: string
+      toolCallId: string
+      toolName: string
+      args: unknown
+    }
+  }> {
+    const reader = response.body?.getReader()
+    if (!reader) throw new Error("No response body")
+
+    const decoder = new TextDecoder()
+    const state: { pointToolCall: PointToolInput | null } = {
+      pointToolCall: null,
+    }
+
+    const processor = new StreamProcessor({
+      onTextDelta: () => {
+        // Text is accumulated in the processor
+      },
+      onSpeechSegment: (text) => {
+        if (shouldStreamSpeech && this.playbackQueue) {
+          this.playbackQueue.enqueue(text)
+        }
+      },
+      onToolCall: (event) => {
+        // Check if it's the point tool
+        if (event.toolName === "point") {
+          const input = event.args as { elementId?: number; label?: string }
+          if (
+            input &&
+            typeof input.elementId === "number" &&
+            typeof input.label === "string"
+          ) {
+            state.pointToolCall = {
+              elementId: input.elementId,
+              label: input.label,
+            }
+          }
+        } else {
+          // Regular tool - add to manager
+          this.toolManager.handleToolCall(event)
+          this.options.onToolCall?.({
+            id: event.toolCallId,
+            toolName: event.toolName,
+            args: event.args,
+          })
+        }
+      },
+      onApprovalRequest: (event) => {
+        this.toolManager.handleApprovalRequest(event)
+      },
+      onToolResult: (event) => {
+        const toolCall = this.toolManager.getToolCall(event.toolCallId)
+        this.toolManager.handleToolResult(event)
+        if (toolCall) {
+          this.options.onToolResult?.({
+            id: event.toolCallId,
+            toolName: toolCall.toolName,
+            result: event.result,
+          })
+        }
+      },
+      onToolError: (event) => {
+        this.toolManager.handleToolError(event)
+      },
+      onFinish: () => {
+        // Stream finished
+      },
+      onError: (error) => {
+        throw new Error(error)
+      },
+    })
+
+    // Read the stream
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value, { stream: true })
+      processor.processChunk(chunk)
+
+      // Update visible response
+      this.response = processor.getResponseText()
+      this.notify()
+    }
+
+    // Process any remaining data
+    const trailingChunk = decoder.decode()
+    if (trailingChunk) {
+      processor.processChunk(trailingChunk)
+    }
+
+    const result = processor.finish()
+
+    // Handle point tool
+    if (state.pointToolCall !== null) {
+      const pointCall = state.pointToolCall
+      const element = screenshot.elementRegistry.get(pointCall.elementId)
+      if (element) {
+        const rect = element.getBoundingClientRect()
+        const x = Math.round(rect.left + rect.width / 2)
+        const y = Math.round(rect.top + rect.height / 2)
+        const target: PointingTarget = {
+          x,
+          y,
+          label: pointCall.label,
+        }
+        this.options.onPoint?.(target)
+        this.pointerController.pointAt(target)
+      }
+    }
+
+    // Queue full response if not streaming speech
+    if (!shouldStreamSpeech && this.playbackQueue) {
+      this.playbackQueue.enqueue(result.responseText)
+    }
+
+    return result
+  }
+
+  private waitForApproval(): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.pendingApprovalResolver = resolve
+    })
   }
 
   private async transcribe(blob: Blob, signal?: AbortSignal): Promise<string> {
@@ -419,117 +639,10 @@ export class CursorBuddyClient {
       throw new Error(await readErrorMessage(response, "Transcription failed"))
     }
 
-    const { text } = await response.json()
-    return text
+    const data = (await response.json()) as { text: string }
+    return data.text
   }
 
-  /**
-   * Stream the chat response, keep the visible text updated, and feed complete
-   * speech segments into the TTS queue as soon as they are ready.
-   */
-  private async chatAndSpeak(
-    transcript: string,
-    screenshot: ScreenshotResult,
-    signal: AbortSignal | undefined,
-    options: {
-      onFailure: (error: Error) => void
-      onPlaybackStart: () => void
-    },
-  ): Promise<{
-    cleanResponse: string
-    pointToolCall: PointToolInput | null
-    playbackQueue: TTSPlaybackQueue
-  }> {
-    const history = $conversationHistory.get()
-
-    const response = await fetch(`${this.endpoint}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        screenshot: screenshot.imageData,
-        capture: {
-          width: screenshot.width,
-          height: screenshot.height,
-        },
-        transcript,
-        history,
-        domSnapshot: screenshot.domSnapshot,
-      }),
-      signal,
-    })
-
-    if (!response.ok) {
-      throw new Error("Chat request failed")
-    }
-
-    const reader = response.body?.getReader()
-    if (!reader) throw new Error("No response body")
-
-    const decoder = new TextDecoder()
-    const responseProcessor = new ProgressiveResponseProcessor()
-    const playbackQueue = new TTSPlaybackQueue({
-      onError: options.onFailure,
-      onPlaybackStart: options.onPlaybackStart,
-      prepare: (text, currentSignal) =>
-        this.prepareSpeechSegment(text, currentSignal),
-      signal,
-    })
-    const shouldStreamSpeech = this.isSpeechStreamingEnabled()
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunk = decoder.decode(value, { stream: true })
-      const { speechSegments, visibleText } = responseProcessor.push(chunk)
-
-      if (shouldStreamSpeech) {
-        // Queue speech as early as possible, but keep playback ordered so the
-        // spoken response stays aligned with the streamed text.
-        for (const speechSegment of speechSegments) {
-          playbackQueue.enqueue(speechSegment)
-        }
-      }
-
-      this.updateResponse(visibleText)
-    }
-
-    const trailingChunk = decoder.decode()
-    if (trailingChunk) {
-      const { speechSegments, visibleText } =
-        responseProcessor.push(trailingChunk)
-
-      if (shouldStreamSpeech) {
-        for (const speechSegment of speechSegments) {
-          playbackQueue.enqueue(speechSegment)
-        }
-      }
-
-      this.updateResponse(visibleText)
-    }
-
-    const finalizedResponse = responseProcessor.finish()
-
-    if (shouldStreamSpeech) {
-      for (const speechSegment of finalizedResponse.speechSegments) {
-        playbackQueue.enqueue(speechSegment)
-      }
-    } else {
-      playbackQueue.enqueue(finalizedResponse.finalResponseText)
-    }
-
-    this.updateResponse(finalizedResponse.finalResponseText)
-
-    return {
-      cleanResponse: finalizedResponse.finalResponseText,
-      pointToolCall: finalizedResponse.pointToolCall,
-      playbackQueue,
-    }
-  }
-
-  /**
-   * Request server-side TTS audio for one text segment.
-   */
   private async synthesizeSpeech(
     text: string,
     signal?: AbortSignal,
@@ -548,16 +661,6 @@ export class CursorBuddyClient {
     return response.blob()
   }
 
-  /**
-   * Resolve the initial speech provider for this turn.
-   *
-   * Decision tree:
-   * 1. In `server` mode, always synthesize on the server.
-   * 2. In `browser` mode, require browser speech support up front.
-   * 3. In `auto` mode, prefer browser speech when available and keep that
-   *    choice cached so later segments stay on the same provider unless a
-   *    browser failure forces a one-way fallback to the server.
-   */
   private prepareSpeechMode(): void {
     const speechMode = this.getSpeechMode()
 
@@ -580,13 +683,6 @@ export class CursorBuddyClient {
       : "server"
   }
 
-  /**
-   * Prepare a playback task for one text segment.
-   *
-   * The queue calls this eagerly so server synthesis can overlap with the
-   * currently playing segment, but the returned task is still executed in the
-   * original enqueue order.
-   */
   private async prepareSpeechSegment(
     text: string,
     signal?: AbortSignal,
@@ -601,36 +697,21 @@ export class CursorBuddyClient {
     }
   }
 
-  /**
-   * Synthesize server audio immediately and return a playback task that reuses
-   * the prepared blob later.
-   */
   private async prepareServerSpeechTask(
     text: string,
     signal?: AbortSignal,
   ): Promise<SpeechPlaybackTask> {
     const blob = await this.synthesizeSpeech(text, signal)
-
     return () => this.audioPlayback.play(blob, signal)
   }
 
-  /**
-   * Return a browser playback task for one text segment.
-   */
   private async prepareBrowserSpeechTask(
-    text: string,
+    _text: string,
     signal?: AbortSignal,
   ): Promise<SpeechPlaybackTask> {
-    return () => this.browserSpeech.speak(text, signal)
+    return () => this.browserSpeech.speak(_text, signal)
   }
 
-  /**
-   * Prepare a playback task for `auto` mode.
-   *
-   * We prefer the browser for low latency, but if browser speech fails for any
-   * segment we permanently switch the remainder of the turn to server TTS so
-   * later segments do not keep retrying the failing browser path.
-   */
   private async prepareAutoSpeechTask(
     text: string,
     signal?: AbortSignal,
@@ -640,38 +721,23 @@ export class CursorBuddyClient {
     }
 
     return async () => {
-      // Another segment may already have forced a fallback before this one
-      // reaches playback, so re-check the cached provider decision here.
       if (this.getAutoSpeechProvider() === "server") {
-        const fallbackPlayback = await this.prepareServerSpeechTask(
-          text,
-          signal,
-        )
-        await fallbackPlayback()
+        const fallback = await this.prepareServerSpeechTask(text, signal)
+        await fallback()
         return
       }
 
       try {
         await this.browserSpeech.speak(text, signal)
-      } catch (error) {
+      } catch {
         if (signal?.aborted) return
-
-        // Browser speech failed mid-turn. Flip future segments to the server
-        // and replay the current segment there so the turn still completes.
         this.speechProviderForTurn = "server"
-        const fallbackPlayback = await this.prepareServerSpeechTask(
-          text,
-          signal,
-        )
-        await fallbackPlayback()
+        const fallback = await this.prepareServerSpeechTask(text, signal)
+        await fallback()
       }
     }
   }
 
-  /**
-   * Read the current provider choice for `auto` mode, lazily defaulting to the
-   * browser when supported and the server otherwise.
-   */
   private getAutoSpeechProvider(): "browser" | "server" {
     if (this.speechProviderForTurn) {
       return this.speechProviderForTurn
@@ -692,47 +758,26 @@ export class CursorBuddyClient {
     this.notify()
   }
 
-  /**
-   * Resolve the effective transcription mode for the current client.
-   */
   private getTranscriptionMode(): CursorBuddyMediaMode {
     return this.options.transcription?.mode ?? "auto"
   }
 
-  /**
-   * Resolve the effective speech mode for the current client.
-   */
   private getSpeechMode(): CursorBuddyMediaMode {
     return this.options.speech?.mode ?? "server"
   }
 
-  /**
-   * Decide whether speech should start before the full chat response is ready.
-   */
   private isSpeechStreamingEnabled(): boolean {
     return this.options.speech?.allowStreaming ?? false
   }
 
-  /**
-   * Decide whether this turn should attempt browser speech recognition.
-   */
   private shouldAttemptBrowserTranscription(): boolean {
     return this.getTranscriptionMode() !== "server"
   }
 
-  /**
-   * Decide whether browser speech recognition is mandatory for this turn.
-   */
   private isBrowserTranscriptionRequired(): boolean {
     return this.getTranscriptionMode() === "browser"
   }
 
-  /**
-   * Start the recorder and browser speech recognition together.
-   *
-   * The recorder always runs so we keep waveform updates and preserve a raw
-   * audio backup for server fallback in `auto` mode.
-   */
   private async beginListeningSession(signal: AbortSignal): Promise<void> {
     const shouldAttemptBrowser = this.shouldAttemptBrowserTranscription()
     const isBrowserTranscriptionAvailable =
@@ -758,8 +803,6 @@ export class CursorBuddyClient {
       throw toError(voiceCaptureResult.reason, "Failed to start microphone")
     }
 
-    // In browser-only mode, a browser STT startup failure should fail the turn.
-    // In auto mode we silently keep the recorder alive for server fallback.
     if (
       browserTranscriptionResult.status === "rejected" &&
       this.isBrowserTranscriptionRequired()
@@ -775,10 +818,6 @@ export class CursorBuddyClient {
     }
   }
 
-  /**
-   * Stop browser speech recognition and return the best final transcript it
-   * produced for this turn.
-   */
   private async stopLiveTranscription(): Promise<string> {
     if (
       !this.shouldAttemptBrowserTranscription() ||
@@ -790,24 +829,13 @@ export class CursorBuddyClient {
     try {
       return await this.liveTranscription.stop()
     } catch (error) {
-      // Browser mode should surface the recognition error directly.
-      // Auto mode falls back to the recorded audio instead.
       if (this.isBrowserTranscriptionRequired()) {
         throw toError(error, "Browser transcription failed")
       }
-
       return ""
     }
   }
 
-  /**
-   * Choose the transcript that should drive the turn.
-   *
-   * Decision tree:
-   * 1. Use the browser transcript when it is available.
-   * 2. In browser-only mode, fail if the browser produced nothing usable.
-   * 3. In auto/server modes, fall back to the recorded audio upload.
-   */
   private async resolveTranscript(
     browserTranscript: string,
     audioBlob: Blob,
@@ -827,15 +855,7 @@ export class CursorBuddyClient {
     return this.transcribe(audioBlob, signal)
   }
 
-  private updateResponse(text: string): void {
-    if (this.response === text) return
-
-    this.response = text
-    this.notify()
-  }
-
   private notify(): void {
-    // Update cached snapshot before notifying (required for useSyncExternalStore)
     this.cachedSnapshot = this.buildSnapshot()
     this.listeners.forEach((listener) => listener())
   }

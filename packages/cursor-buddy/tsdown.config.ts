@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { transform } from "lightningcss"
 import type { Plugin } from "rolldown"
 import { defineConfig } from "tsdown"
 
@@ -26,8 +27,13 @@ const cssInlinePlugin: Plugin = {
 
     try {
       const cssContent = fs.readFileSync(filePath, "utf-8")
+      const { code: minified } = transform({
+        filename: filePath,
+        code: Buffer.from(cssContent),
+        minify: true,
+      })
       return {
-        code: `export default ${JSON.stringify(cssContent)};`,
+        code: `export default ${JSON.stringify(minified.toString())};`,
         moduleType: "js",
       }
     } catch (error) {

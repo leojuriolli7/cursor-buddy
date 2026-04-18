@@ -30,12 +30,15 @@ export function CursorBuddyProvider({
   endpoint,
   transcription,
   speech,
+  toolDisplay,
   children,
   onTranscript,
   onResponse,
   onPoint,
   onStateChange,
   onError,
+  onToolCall,
+  onToolResult,
 }: CursorBuddyProviderProps) {
   const [client] = useState(
     () =>
@@ -45,8 +48,11 @@ export function CursorBuddyProvider({
         onPoint,
         onStateChange,
         onError,
+        onToolCall,
+        onToolResult,
         speech,
         transcription,
+        toolDisplay,
       }),
   )
 

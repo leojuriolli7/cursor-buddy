@@ -11,6 +11,10 @@ import {
   $pointingTarget,
 } from "../../core/atoms"
 import type {
+  ToolBubbleRenderProps,
+  ToolDisplayConfig,
+} from "../../core/tools"
+import type {
   CursorRenderProps,
   SpeechBubbleRenderProps,
   WaveformRenderProps,
@@ -18,6 +22,7 @@ import type {
 import { useCursorBuddy } from "../hooks"
 import { DefaultCursor } from "./Cursor"
 import { DefaultSpeechBubble } from "./SpeechBubble"
+import { ToolBubbleStack } from "./ToolBubbleStack"
 import { DefaultWaveform } from "./Waveform"
 
 export interface OverlayProps {
@@ -27,25 +32,40 @@ export interface OverlayProps {
   speechBubble?: (props: SpeechBubbleRenderProps) => React.ReactNode
   /** Custom waveform renderer */
   waveform?: (props: WaveformRenderProps) => React.ReactNode
+  /** Tool display configuration */
+  toolDisplay?: ToolDisplayConfig
+  /** Custom tool bubble renderer (overrides per-tool config) */
+  renderToolBubble?: (props: ToolBubbleRenderProps) => React.ReactNode
   /** Container element for portal (defaults to document.body) */
   container?: HTMLElement | null
 }
 
 /**
- * Overlay component that renders the cursor, speech bubble, and waveform.
+ * Overlay component that renders the cursor, speech bubble, waveform, and tool bubbles.
  * Uses React portal to render at the document body level.
  */
 export function Overlay({
   cursor,
   speechBubble,
   waveform,
+  toolDisplay,
+  renderToolBubble,
   container,
 }: OverlayProps) {
   // Only render after mount to avoid hydration mismatch
   const [isMounted, setIsMounted] = useState(false)
   useEffect(() => setIsMounted(true), [])
 
-  const { state, isPointing, isEnabled, dismissPointing } = useCursorBuddy()
+  const {
+    state,
+    isPointing,
+    isEnabled,
+    dismissPointing,
+    activeToolCalls,
+    approveToolCall,
+    denyToolCall,
+    dismissToolCall,
+  } = useCursorBuddy()
 
   const buddyPosition = useStore($buddyPosition)
   const buddyRotation = useStore($buddyRotation)
@@ -110,6 +130,14 @@ export function Overlay({
         {cursorElement}
         {state === "listening" && waveformElement}
         {isPointing && speechBubbleElement}
+        <ToolBubbleStack
+          toolCalls={activeToolCalls}
+          toolDisplay={toolDisplay}
+          onApprove={approveToolCall}
+          onDeny={denyToolCall}
+          onDismiss={dismissToolCall}
+          renderToolBubble={renderToolBubble}
+        />
       </div>
     </div>
   )
