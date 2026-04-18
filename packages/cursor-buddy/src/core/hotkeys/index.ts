@@ -13,3 +13,8 @@ export {
   isModifierReleased,
 } from "./matcher"
 export { createHotkeyController } from "./controller"
+export {
+  createApprovalShortcutController,
+  type ApprovalShortcutController,
+  type ApprovalShortcutOptions,
+} from "./approval-shortcuts"

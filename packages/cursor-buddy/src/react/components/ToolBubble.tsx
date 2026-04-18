@@ -119,7 +119,7 @@ export function ToolBubble({
             onClick={approve}
             aria-label={`Approve ${toolName}`}
           >
-            Yes
+            Yes (Y)
           </button>
           <button
             type="button"
@@ -127,7 +127,7 @@ export function ToolBubble({
             onClick={deny}
             aria-label={`Deny ${toolName}`}
           >
-            No
+            No (Esc)
           </button>
         </div>
       )}

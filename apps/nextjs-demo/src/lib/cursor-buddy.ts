@@ -8,6 +8,7 @@ export const cursorBuddy = createCursorBuddyHandler({
   model: openai("gpt-5.4-nano"),
   tools: {
     web_search: openai.tools.webSearch({
+      needsApproval: true,
       searchContextSize: "low",
     }),
   },

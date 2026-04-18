@@ -20,6 +20,7 @@ import type {
   WaveformRenderProps,
 } from "../../core/types"
 import { useCursorBuddy } from "../hooks"
+import { useApprovalShortcuts } from "../use-approval-shortcuts"
 import { DefaultCursor } from "./Cursor"
 import { DefaultSpeechBubble } from "./SpeechBubble"
 import { ToolBubbleStack } from "./ToolBubbleStack"
@@ -62,10 +63,18 @@ export function Overlay({
     isEnabled,
     dismissPointing,
     activeToolCalls,
+    pendingApproval,
     approveToolCall,
     denyToolCall,
     dismissToolCall,
   } = useCursorBuddy()
+
+  // Keyboard shortcuts for approval (Y/Enter = approve, N/Escape = deny)
+  useApprovalShortcuts(
+    pendingApproval !== null,
+    () => pendingApproval && approveToolCall(pendingApproval.id),
+    () => pendingApproval && denyToolCall(pendingApproval.id),
+  )
 
   const buddyPosition = useStore($buddyPosition)
   const buddyRotation = useStore($buddyRotation)
