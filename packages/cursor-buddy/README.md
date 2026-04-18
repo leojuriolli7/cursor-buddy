@@ -1,13 +1,7 @@
 # cursor-buddy
 
 
-
-
 https://github.com/user-attachments/assets/def0876a-d63c-4e31-b633-9be3fb2b79b5
-
-
-
-
 
 
 AI Agent that lives in your cursor, built for web apps. Push-to-talk voice assistant that can see your screen and point at things.
@@ -236,6 +230,9 @@ When the AI uses tools (like web search), bubbles appear near the cursor showing
 | `failed` | Execution failed |
 
 ### Approval Keyboard Shortcuts
+
+<img width="374" height="200" alt="Screenshot 2026-04-18 at 14 37 42" src="https://github.com/user-attachments/assets/66f2775b-afb4-4f43-b141-0e748ec0fe81" />
+
 
 When a tool requires approval, use these keyboard shortcuts:
 
