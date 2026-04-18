@@ -1,7 +1,13 @@
 # cursor-buddy
 
 
-https://github.com/user-attachments/assets/3cdfe011-aee2-4c8e-b695-34f83a972593
+
+
+https://github.com/user-attachments/assets/def0876a-d63c-4e31-b633-9be3fb2b79b5
+
+
+
+
 
 
 AI Agent that lives in your cursor, built for web apps. Push-to-talk voice assistant that can see your screen and point at things.
